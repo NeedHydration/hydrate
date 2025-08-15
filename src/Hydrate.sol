@@ -79,8 +79,9 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     //Mutable, owner-only setting variables
     address payable public snowTreasury;
-    uint256 public freezeFeeBps = 269;
-    uint256 public burnFeeBps = 269;
+    // TODO: confirm these
+    uint256 public freezeFeeBps = 250;
+    uint256 public burnFeeBps = 250;
     uint256 public leverageFeeBps = 142;
     address public freezer;
 
