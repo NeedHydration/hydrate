@@ -33,7 +33,7 @@ contract HydrateTest is Test {
 
         IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
         IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
-        IMockKHYPE(address(KHYPE)).mint(borrower, 1000 ether);
+        IMockKHYPE(address(KHYPE)).mint(borrower, 10000 ether);
 
         KHYPE.approve(address(hydrate), type(uint256).max);
 
@@ -190,10 +190,11 @@ contract HydrateTest is Test {
 
         uint256 preBacking = hydrate.balanceOf(address(hydrate));
         uint256 preBal = KHYPE.balanceOf(address(treasury));
+        uint256 preBalBorrower = KHYPE.balanceOf(borrower);
         hydrate.borrow(100 ether, 10);
 
         // 97.5% of borrow goes to borrower
-        assertEq(97.5 ether, KHYPE.balanceOf(borrower));
+        assertEq(97.5 ether + preBalBorrower, KHYPE.balanceOf(borrower));
 
         // Treasury collects fee
         assertGt(KHYPE.balanceOf(treasury), preBal);
@@ -206,7 +207,7 @@ contract HydrateTest is Test {
         preBal = KHYPE.balanceOf(address(treasury));
         uint256 preBorrower = KHYPE.balanceOf(borrower);
 
-        hydrate.increaseBorrow(10 ether);
+        hydrate.increaseBorrow(1 ether);
 
         // Borrower recieves more KHYPE
         assertGt(KHYPE.balanceOf(borrower), preBorrower);
@@ -220,7 +221,7 @@ contract HydrateTest is Test {
         // ===== Extend Loan =====
         preBal = KHYPE.balanceOf(address(treasury));
         preBacking = hydrate.balanceOf(address(hydrate));
-        (uint256 collateral, uint256 borrowed, uint256 endDate) = hydrate
+        (uint256 _collateral, uint256 borrowed, uint256 _time) = hydrate
             .getLoanByAddress(borrower);
         uint256 loanFee = hydrate.getInterestFee(borrowed, 10);
 
@@ -239,6 +240,12 @@ contract HydrateTest is Test {
 
         assertEq(1 ether + preBacking, KHYPE.balanceOf(address(hydrate)));
 
+        // ===== Close Position =====
+        preBacking = KHYPE.balanceOf(address(hydrate));
+        (_collateral, borrowed, _time) = hydrate.getLoanByAddress(borrower);
+        hydrate.closePosition(borrowed);
+
+        assertEq(preBacking + borrowed, KHYPE.balanceOf(address(hydrate)));
 
         vm.stopBroadcast();
     }

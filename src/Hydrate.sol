@@ -872,6 +872,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _subtractLoansOnDate(0, amount, activeLoans[msg.sender].endDate);
 
         _riseOnly(0);
+
         emit RemoveCollateral(msg.sender, amount);
     }
 
@@ -890,23 +891,24 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         activeLoans[msg.sender].borrowed = newBorrow;
         _subtractLoansOnDate(amount, 0, activeLoans[msg.sender].endDate);
 
-        // TODO: CHECK: ADDED Transfer of KHYPE here
         KHYPE.safeTransferFrom(msg.sender, address(this), amount);
+        _riseOnly(0);
 
-        _riseOnly(amount);
         emit Repay(msg.sender, amount, newBorrow);
     }
 
     /// @notice Fully repays a loan and returns collateral
     /// @dev Requires an active non-expired loan and exact repayment amount
     /// @dev Applies a 1% fee on the collateral value
-    function closePosition() public payable nonReentrant {
+    function closePosition(uint256 amount) public payable nonReentrant {
         uint256 borrowed = activeLoans[msg.sender].borrowed;
         uint256 collateral = activeLoans[msg.sender].collateral;
         require(!isLoanExpired(msg.sender), "No active loans");
-        require(borrowed == msg.value, "Must return entire borrowed amount");
+        require(borrowed == amount, "Must return entire borrowed amount");
+
         liquidate();
         _transfer(address(this), msg.sender, collateral);
+        KHYPE.safeTransferFrom(msg.sender, address(this), amount);
         _subtractLoansOnDate(
             borrowed,
             collateral,
@@ -915,7 +917,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         delete activeLoans[msg.sender];
         _riseOnly(0);
-        emit Repay(msg.sender, msg.value, 0);
+
+        emit Repay(msg.sender, amount, 0);
     }
 
     /// @notice Allows users to close their loan positions by using their SNOW collateral directly
@@ -991,7 +994,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev Requires an active non-expired loan and payment of extension fee
     function extendLoan(
         uint256 numberOfDays,
-        uint256 loanFee
+        uint256 loanAmount
     ) public nonReentrant returns (uint256) {
         require(borrowingEnabled, "Borrowing is disabled");
         uint256 oldEndDate = activeLoans[msg.sender].endDate;
@@ -1003,15 +1006,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         uint256 loanFee = getInterestFee(borrowed, numberOfDays);
         require(!isLoanExpired(msg.sender), "No active loans");
-        require(loanFee == loanFee, "Loan extension fee incorrect");
-        KHYPE.safeTransferFrom(msg.sender, address(this), loanFee);
+        require(loanFee == loanAmount, "Loan extension fee incorrect");
+        KHYPE.safeTransferFrom(msg.sender, address(this), loanAmount);
 
         uint256 treasuryFee = (loanFee * PROTOCOL_FEE_SHARE_BPS) /
             BPS_DENOMINATOR;
         require(treasuryFee > DUST, "Fees must be higher than dust");
         liquidate();
         KHYPE.safeTransfer(snowTreasury, treasuryFee);
-        
+
         _subtractLoansOnDate(borrowed, collateral, oldEndDate);
         _addLoansOnDate(borrowed, collateral, newEndDate);
         activeLoans[msg.sender].endDate = newEndDate;
