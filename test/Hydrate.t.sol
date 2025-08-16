@@ -76,7 +76,7 @@ contract HydrateTest is Test {
         vm.stopBroadcast();
     }
 
-    function test_mintAndBurn() public {
+    function test_mintAndBurn_HYPE() public {
         _setup();
 
         vm.startBroadcast(minter);
@@ -108,7 +108,57 @@ contract HydrateTest is Test {
         uint256 preBalHydrate = KHYPE.balanceOf(address(hydrate));
         msgValue = 10 ether;
 
-        // Burn
+        hydrate.burn(msgValue);
+
+        // Minter redeems 97.5%
+        // Use Gt then due to rounding errors in arithmetic
+        assertGt(msgValue, (KHYPE.balanceOf(minter) - preBalMinter));
+
+        // Treasury balance (gets 35% of 2.5% of 10)
+        assertLt(preBal, KHYPE.balanceOf(treasury));
+
+        // Backing should increase
+        // Assert that the balance after is > burn with no fees
+        assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
+
+        vm.stopBroadcast();
+    }
+
+    function test_mintAndBurn_KHYPE() public {
+        _setup();
+
+        vm.startBroadcast(minter);
+
+        KHYPE.approve(address(hydrate), type(uint256).max);
+
+        uint256 preBal = KHYPE.balanceOf(address(hydrate));
+        uint256 msgValue = 100 ether;
+
+        // ===== Mint =====
+        hydrate.freezeKHYPE(minter, msgValue);
+
+        // 97.5% of mint goes to minter
+        assertEq(97.5 ether, hydrate.balanceOf(minter));
+
+        // (100 * 0.025 * 0.35)
+        uint256 expectedTreasury = 0.875 ether;
+
+        // Check backing
+        assertEq(
+            preBal + (msgValue - expectedTreasury),
+            KHYPE.balanceOf(address(hydrate))
+        );
+
+        // Check treasury
+        assertEq(expectedTreasury, KHYPE.balanceOf(treasury));
+
+        // ===== Burn =====
+
+        preBal = KHYPE.balanceOf(treasury);
+        uint256 preBalMinter = KHYPE.balanceOf(minter);
+        uint256 preBalHydrate = KHYPE.balanceOf(address(hydrate));
+        msgValue = 10 ether;
+
         hydrate.burn(msgValue);
 
         // Minter redeems 97.5%

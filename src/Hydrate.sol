@@ -117,6 +117,11 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         address _KHYPE,
         address _stakeHub
     ) {
+        require(_owner != address(0), "Owner cannot be 0 address");
+        require(_treasury != address(0), "Treasury cannot be 0 address");
+        require(_KHYPE != address(0), "KHYPE cannot be 0 address");
+        require(_stakeHub != address(0), "StakeHub cannot be 0 address");
+
         _initializeOwner(_owner);
         lastLiquidateDate = getDayStart(block.timestamp);
         snowTreasury = payable(_treasury);
@@ -129,11 +134,11 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //***************************************************
     //  ERC20 settings
     function name() public pure override returns (string memory) {
-        return "Snow";
+        return "Hydrate";
     }
 
     function symbol() public pure override returns (string memory) {
-        return "SNOW";
+        return "H20";
     }
 
     //***************************************************
@@ -547,6 +552,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     // function buy(address receiver) external payable nonReentrant {
     //     _freezeSnow(receiver);
     // }
+
+    function freezeKHYPE(
+        address receiver,
+        uint256 amount
+    ) external nonReentrant {
+        KHYPE.transferFrom(msg.sender, address(this), amount);
+        _freezeSnow(receiver, amount);
+    }
 
     /// @notice Buys SNOW tokens with AVAX
     /// @param receiver The address to receive the SNOW tokens
