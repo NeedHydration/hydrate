@@ -5,29 +5,73 @@ import "forge-std/Test.sol";
 import {Snow} from "../src/Hydrate.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {Snow} from "../src/Hydrate.sol";
+import {MockStakeHub} from "./mocks/MockStakeHub.sol";
+import "./mocks/MockKHYPE.sol";
+import {IStakeHub} from "../src/interfaces/IStakeHub.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "forge-std/console.sol";
 
 contract HydrateTest is Test {
     address admin = makeAddr("admin");
     address treasury = makeAddr("treasury");
     address minter = makeAddr("minter");
+
     Snow hydrate;
+    IStakeHub stakeHub;
+    IERC20 KHYPE;
 
     function _setup() internal {
-        vm.deal(admin, 6900 ether);
+        vm.deal(admin, 1000 ether);
         vm.deal(minter, 1000 ether);
 
-        hydrate = new Snow(admin, treasury);
+        KHYPE = new MockKHYPE();
+        stakeHub = new MockStakeHub(address(KHYPE));
+        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub));
 
         vm.startBroadcast(admin);
 
-        // Enable minting and burning
-        hydrate.setStart{value: 6900 ether}();
+        IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
+        IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
 
-        // Increase Total supply
-        // TODO: what should the total supply at deployment be?
+        KHYPE.approve(address(hydrate), type(uint256).max);
+
+        // // Enable minting and burning
+        // hydrate.{value: 6900 ether}();
+        hydrate.setStartKHYPE(6900 ether);
+
+        // // Increase Total supply
+        // // TODO: what should the total supply at deployment be?
         uint256 newTotalSupply = hydrate.totalFreezed() * 2;
         hydrate.increaseMaxSupply(newTotalSupply);
+
+        vm.stopBroadcast();
+    }
+
+    function test_setStartHype() public {
+        address adminTwo = makeAddr("admin");
+        address treasuryTwo = makeAddr("treasury");
+        vm.deal(adminTwo, 6900 ether);
+
+        IERC20 KHYPETwo = new MockKHYPE();
+        IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
+        Snow hydrateTwo = new Snow(
+            adminTwo,
+            treasuryTwo,
+            address(KHYPETwo),
+            address(stakeHubTwo)
+        );
+
+        vm.startBroadcast(adminTwo);
+        KHYPETwo.approve(address(hydrateTwo), type(uint256).max);
+        hydrateTwo.setStart{value: 6900 ether}();
+
+        assertEq(KHYPETwo.balanceOf(address(hydrateTwo)), 6900 ether);
+        assertEq(hydrateTwo.balanceOf(adminTwo), 6900 ether);
+        assertEq(hydrateTwo.totalFreezed(), 6900 ether);
+        assertEq(hydrateTwo.started(), true);
+        assertEq(hydrateTwo.borrowingEnabled(), true);
+        assertEq(hydrateTwo.maxFreeze(), 6900 ether);
+        assertEq(hydrateTwo.totalFreezed(), 6900 ether);
 
         vm.stopBroadcast();
     }
@@ -36,37 +80,47 @@ contract HydrateTest is Test {
         _setup();
 
         vm.startBroadcast(minter);
-
-        uint256 preBal = address(hydrate).balance;
+        uint256 preBal = KHYPE.balanceOf(address(hydrate));
         uint256 msgValue = 100 ether;
 
-        // Mint
+        // ===== Mint =====
         hydrate.freeze{value: msgValue}(minter);
 
         // 97.5% of mint goes to minter
         assertEq(97.5 ether, hydrate.balanceOf(minter));
-        // 35% of 2.50 (Fee)
-        assertEq(0.875 ether, address(treasury).balance);
-        // Remainig 65% to contract
+
+        // (100 * 0.025 * 0.35)
+        uint256 expectedTreasury = 0.875 ether;
+
+        // Check backing
         assertEq(
-            preBal + (msgValue - address(treasury).balance),
-            address(hydrate).balance
+            preBal + (msgValue - expectedTreasury),
+            KHYPE.balanceOf(address(hydrate))
         );
 
-        // ================================================
+        // Check treasury
+        assertEq(expectedTreasury, KHYPE.balanceOf(treasury));
 
-        preBal = address(treasury).balance;
-        uint256 preBalMinter = address(minter).balance;
+        // ===== Burn =====
+
+        preBal = KHYPE.balanceOf(treasury);
+        uint256 preBalMinter = KHYPE.balanceOf(minter);
+        uint256 preBalHydrate = KHYPE.balanceOf(address(hydrate));
+        msgValue = 10 ether;
 
         // Burn
-        hydrate.burn(10 ether);
+        hydrate.burn(msgValue);
 
-        // Minter balance (gets 97.5% of 10)
-        // Use Lt then due to rounding errors in arithmetic
-        assertLt(preBalMinter, address(minter).balance);
+        // Minter redeems 97.5%
+        // Use Gt then due to rounding errors in arithmetic
+        assertGt(msgValue, (KHYPE.balanceOf(minter) - preBalMinter));
 
-        // Treasury balance (gets 2.5% of 10)
-        assertLt(preBal, address(treasury).balance);
+        // Treasury balance (gets 35% of 2.5% of 10)
+        assertLt(preBal, KHYPE.balanceOf(treasury));
+
+        // Backing should increase
+        // Assert that the balance after is > burn with no fees
+        assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
 
         vm.stopBroadcast();
     }

@@ -2,12 +2,9 @@
 pragma solidity ^0.8.27;
 
 import {MockKHYPE} from "./MockKHYPE.sol";
+import {IStakeHub} from "../../src/interfaces/IStakeHub.sol";
 
-interface IStakeHub {
-    function stake() external payable;
-}
-
-contract MockStakeHub {
+contract MockStakeHub is IStakeHub {
     MockKHYPE public kHYPE;
 
     constructor(address _kHYPE) {

@@ -21,10 +21,13 @@ import {IRewardVault} from "./interfaces/IRewardVault.sol";
 import {InterfaceSNOW} from "./interfaces/InterfaceHydrate.sol";
 import {iSnow} from "./iHydrate.sol";
 import {SnowGT} from "./HydrateGT.sol";
+import {IStakeHub} from "./interfaces/IStakeHub.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // Snow
 contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     using SafeTransferLib for address;
+    using SafeERC20 for IERC20;
 
     /// @notice Struct representing a user's loan
     /// @param collateral Amount of SNOW tokens staked as collateral
@@ -78,6 +81,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         0x000000000000000000000000000000000000dEaD;
 
     //Mutable, owner-only setting variables
+    IERC20 public KHYPE;
+    IStakeHub public stakeHub;
     address payable public snowTreasury;
     // TODO: confirm these
     uint256 public freezeFeeBps = 250;
@@ -106,12 +111,19 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Initializes the Snow contract
     /// @dev Sets the initial lastLiquidateDate and snowTreasury, deploy iSnow and snowGT
-    constructor(address _owner, address _treasury) {
+    constructor(
+        address _owner,
+        address _treasury,
+        address _KHYPE,
+        address _stakeHub
+    ) {
         _initializeOwner(_owner);
         lastLiquidateDate = getDayStart(block.timestamp);
         snowTreasury = payable(_treasury);
         stakedSnow = new iSnow();
         snowGT = new SnowGT();
+        KHYPE = IERC20(_KHYPE);
+        stakeHub = IStakeHub(_stakeHub);
     }
 
     //***************************************************
@@ -127,24 +139,35 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //***************************************************
     //  Owner settings
 
+    // TODO: move me
+    function _start(uint256 amount) internal {
+        require(!started && maxFreeze == 0, "Trading already initialized");
+        require(amount == 6900 ether, "Must send 6900 KHYPE to start trading");
+
+        started = true;
+        borrowingEnabled = true;
+
+        uint256 masterFreezerFreeze = amount; // sets initial price to 1 AVAX
+        maxFreeze = masterFreezerFreeze;
+
+        _freeze(msg.sender, masterFreezerFreeze);
+
+        emit MaxFreezeUpdated(masterFreezerFreeze);
+        emit Started(true);
+    }
+
+    function setStartKHYPE(uint256 amount) public payable onlyOwner {
+        _start(amount);
+        KHYPE.safeTransferFrom(msg.sender, address(this), amount);
+    }
+
     /// @notice Starts freezing and burning for the SNOW token
     /// @dev Requires that fee address is set and must send 6900 AVAX
     /// @dev Requires that the maxSupply is 0 and trading hasn't already started
     /// Mints initial SNOW to the owner and burns 0.1 SNOW
     function setStart() public payable onlyOwner {
-        require(!started && maxFreeze == 0, "Trading already initialized");
-        require(
-            msg.value == 6900 ether,
-            "Must send 6900 AVAX to start trading"
-        );
-        uint256 masterFreezerFreeze = msg.value; // sets initial price to 1 AVAX
-        maxFreeze = masterFreezerFreeze;
-        emit MaxFreezeUpdated(masterFreezerFreeze);
-        _freeze(msg.sender, masterFreezerFreeze);
-        _transfer(msg.sender, DEAD_ADDRESS, 0.1 ether);
-        started = true;
-        borrowingEnabled = true;
-        emit Started(true);
+        _start(msg.value);
+        stakeHub.stake{value: msg.value}();
     }
 
     /// @notice Sets the freezer address
@@ -521,26 +544,28 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //  External functions
 
     /// alias for freeze
-    function buy(address receiver) external payable nonReentrant {
-        _freezeSnow(receiver);
-    }
+    // function buy(address receiver) external payable nonReentrant {
+    //     _freezeSnow(receiver);
+    // }
 
     /// @notice Buys SNOW tokens with AVAX
     /// @param receiver The address to receive the SNOW tokens
     /// @dev Requires trading to be started
     /// Mints SNOW to the receiver based on the current price
     function freeze(address receiver) external payable nonReentrant {
-        _freezeSnow(receiver);
+        uint256 amount = msg.value;
+        stakeHub.stake{value: amount}();
+        _freezeSnow(receiver, amount);
     }
 
-    function _freezeSnow(address receiver) internal {
+    function _freezeSnow(address receiver, uint256 amount) internal {
         liquidate();
         require(started, "Trading must be initialized");
 
         require(receiver != address(0), "Receiver cannot be 0 address");
 
-        // Mint Snow to receiver
-        uint256 snow = AVAXtoSNOWFloor(msg.value);
+        // Calculate amount of snow to recieve
+        uint256 snow = AVAXtoSNOWFloor(amount);
         uint256 snowToFreeze = (snow * (BPS_DENOMINATOR - freezeFeeBps)) /
             BPS_DENOMINATOR;
 
@@ -556,17 +581,17 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Mint SNOW to receiver
         _freeze(receiver, snowToFreeze);
 
-        // Treasury fee
-        uint256 treasuryAmount = (msg.value *
+        // Calculate Treasury Fee and deduct
+        uint256 treasuryAmount = (amount *
             freezeFeeBps *
             PROTOCOL_FEE_SHARE_BPS) /
             BPS_DENOMINATOR /
             BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
-        _sendAvax(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
-        _riseOnly(msg.value);
-        emit Freeze(receiver, msg.value, snowToFreeze);
+        _riseOnly(amount);
+        emit Freeze(receiver, amount, snowToFreeze);
     }
 
     /// @notice Sells SNOW tokens for AVAX
@@ -584,14 +609,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Payment to sender
         uint256 avaxToPay = (avax * (BPS_DENOMINATOR - burnFeeBps)) /
             BPS_DENOMINATOR;
-        _sendAvax(msg.sender, avaxToPay);
+        KHYPE.safeTransfer(msg.sender, avaxToPay);
 
         // Treasury fee
         uint256 treasuryAmount = (avax * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) /
             BPS_DENOMINATOR /
             BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
-        _sendAvax(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
         _riseOnly(avax);
         emit Burn(msg.sender, avaxToPay, snow);
@@ -1206,7 +1231,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Calculates the total backing value of the protocol
     /// @return Sum of contract balance and total borrowed amount
     function getBacking() public view returns (uint256) {
-        return address(this).balance + totalLoans;
+        return KHYPE.balanceOf(address(this)) + totalLoans;
     }
 
     /// @notice Converts SNOW tokens to AVAX
