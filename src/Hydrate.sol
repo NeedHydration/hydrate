@@ -725,7 +725,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function borrow(uint256 avax, uint256 numberOfDays) public nonReentrant {
         require(borrowingEnabled, "Borrowing is disabled");
         require(
-            numberOfDays < 366,
+            numberOfDays <= 365,
             "Max borrow/extension must be 365 days or less"
         );
         require(avax != 0, "Must borrow more than 0");
@@ -762,8 +762,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _transfer(msg.sender, address(this), userSnow);
         require(treasuryFee > DUST, "Fees must be higher than dust");
 
-        _sendAvax(msg.sender, newUserBorrow - avaxFee);
-        _sendAvax(snowTreasury, treasuryFee);
+        KHYPE.safeTransfer(msg.sender, newUserBorrow - avaxFee);
+        KHYPE.safeTransfer(snowTreasury, treasuryFee);
 
         _addLoansOnDate(newUserBorrow, userSnow, endDate);
 
@@ -831,10 +831,10 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
             uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) /
                 BPS_DENOMINATOR;
             require(treasuryFee > DUST, "Fees must be higher than dust");
-            _sendAvax(snowTreasury, treasuryFee);
+            KHYPE.safeTransfer(snowTreasury, treasuryFee);
         }
 
-        _sendAvax(msg.sender, newUserBorrow - avaxFee);
+        KHYPE.safeTransfer(msg.sender, newUserBorrow - avaxFee);
         _addLoansOnDate(newUserBorrow, requireCollateralFromUser, userEndDate);
 
         _riseOnly(avaxFee);
@@ -877,21 +877,24 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Partially repays an active loan
     /// @dev Requires an active non-expired loan and repayment amount less than borrowed
-    function repay() public payable nonReentrant {
+    function repay(uint256 amount) public nonReentrant {
         uint256 borrowed = activeLoans[msg.sender].borrowed;
-        require(borrowed > msg.value, "Must repay less than borrowed amount");
-        require(msg.value != 0, "Must repay something");
+        require(borrowed > amount, "Must repay less than borrowed amount");
+        require(amount > 0, "Repay amount must be greater than 0");
         liquidate();
         require(
             !isLoanExpired(msg.sender),
             "Your loan has been liquidated, cannot repay"
         );
-        uint256 newBorrow = borrowed - msg.value;
+        uint256 newBorrow = borrowed - amount;
         activeLoans[msg.sender].borrowed = newBorrow;
-        _subtractLoansOnDate(msg.value, 0, activeLoans[msg.sender].endDate);
+        _subtractLoansOnDate(amount, 0, activeLoans[msg.sender].endDate);
 
-        _riseOnly(0);
-        emit Repay(msg.sender, msg.value, newBorrow);
+        // TODO: CHECK: ADDED Transfer of KHYPE here
+        KHYPE.safeTransferFrom(msg.sender, address(this), amount);
+
+        _riseOnly(amount);
+        emit Repay(msg.sender, amount, newBorrow);
     }
 
     /// @notice Fully repays a loan and returns collateral
@@ -987,8 +990,9 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @return The fee paid for the extension
     /// @dev Requires an active non-expired loan and payment of extension fee
     function extendLoan(
-        uint256 numberOfDays
-    ) public payable nonReentrant returns (uint256) {
+        uint256 numberOfDays,
+        uint256 loanFee
+    ) public nonReentrant returns (uint256) {
         require(borrowingEnabled, "Borrowing is disabled");
         uint256 oldEndDate = activeLoans[msg.sender].endDate;
         uint256 borrowed = activeLoans[msg.sender].borrowed;
@@ -999,12 +1003,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         uint256 loanFee = getInterestFee(borrowed, numberOfDays);
         require(!isLoanExpired(msg.sender), "No active loans");
-        require(loanFee == msg.value, "Loan extension fee incorrect");
+        require(loanFee == loanFee, "Loan extension fee incorrect");
+        KHYPE.safeTransferFrom(msg.sender, address(this), loanFee);
+
         uint256 treasuryFee = (loanFee * PROTOCOL_FEE_SHARE_BPS) /
             BPS_DENOMINATOR;
         require(treasuryFee > DUST, "Fees must be higher than dust");
         liquidate();
-        _sendAvax(snowTreasury, treasuryFee);
+        KHYPE.safeTransfer(snowTreasury, treasuryFee);
+        
         _subtractLoansOnDate(borrowed, collateral, oldEndDate);
         _addLoansOnDate(borrowed, collateral, newEndDate);
         activeLoans[msg.sender].endDate = newEndDate;
@@ -1014,7 +1021,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
             "Loan must be under 365 days"
         );
 
-        _riseOnly(msg.value);
+        _riseOnly(loanFee);
         emit LoanExtended(
             msg.sender,
             numberOfDays,

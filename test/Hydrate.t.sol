@@ -15,6 +15,7 @@ contract HydrateTest is Test {
     address admin = makeAddr("admin");
     address treasury = makeAddr("treasury");
     address minter = makeAddr("minter");
+    address borrower = makeAddr("borrower");
 
     Snow hydrate;
     IStakeHub stakeHub;
@@ -32,6 +33,7 @@ contract HydrateTest is Test {
 
         IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
         IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
+        IMockKHYPE(address(KHYPE)).mint(borrower, 1000 ether);
 
         KHYPE.approve(address(hydrate), type(uint256).max);
 
@@ -171,6 +173,72 @@ contract HydrateTest is Test {
         // Backing should increase
         // Assert that the balance after is > burn with no fees
         assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
+
+        vm.stopBroadcast();
+    }
+
+    // Test all functions that mutate KHYPE balance for borrows
+    function test_borrow() public {
+        _setup();
+
+        vm.startBroadcast(borrower);
+
+        KHYPE.approve(address(hydrate), type(uint256).max);
+
+        // ===== Mint and borrow =====
+        hydrate.freezeKHYPE(borrower, 1000 ether);
+
+        uint256 preBacking = hydrate.balanceOf(address(hydrate));
+        uint256 preBal = KHYPE.balanceOf(address(treasury));
+        hydrate.borrow(100 ether, 10);
+
+        // 97.5% of borrow goes to borrower
+        assertEq(97.5 ether, KHYPE.balanceOf(borrower));
+
+        // Treasury collects fee
+        assertGt(KHYPE.balanceOf(treasury), preBal);
+
+        // Backing increases
+        assertGt(hydrate.balanceOf(address(hydrate)), preBacking);
+
+        // ==== Increase Borrow ====
+        preBacking = hydrate.balanceOf(address(hydrate));
+        preBal = KHYPE.balanceOf(address(treasury));
+        uint256 preBorrower = KHYPE.balanceOf(borrower);
+
+        hydrate.increaseBorrow(10 ether);
+
+        // Borrower recieves more KHYPE
+        assertGt(KHYPE.balanceOf(borrower), preBorrower);
+
+        // Treasury collects fee
+        assertGt(KHYPE.balanceOf(treasury), preBal);
+
+        // Backing increases
+        assertGt(hydrate.balanceOf(address(hydrate)), preBacking);
+
+        // ===== Extend Loan =====
+        preBal = KHYPE.balanceOf(address(treasury));
+        preBacking = hydrate.balanceOf(address(hydrate));
+        (uint256 collateral, uint256 borrowed, uint256 endDate) = hydrate
+            .getLoanByAddress(borrower);
+        uint256 loanFee = hydrate.getInterestFee(borrowed, 10);
+
+        hydrate.extendLoan(10, loanFee);
+
+        // Treasury collects fee
+        assertGt(KHYPE.balanceOf(treasury), preBal);
+
+        // Backing increases
+        assertGt(KHYPE.balanceOf(address(hydrate)), preBacking);
+
+        // ===== Repay =====
+        preBacking = KHYPE.balanceOf(address(hydrate));
+
+        hydrate.repay(1 ether);
+
+        assertEq(1 ether + preBacking, KHYPE.balanceOf(address(hydrate)));
+
 
         vm.stopBroadcast();
     }
