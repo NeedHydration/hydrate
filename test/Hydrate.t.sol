@@ -242,11 +242,15 @@ contract HydrateTest is Test {
 
         // ===== Close Position =====
         preBacking = KHYPE.balanceOf(address(hydrate));
+        preBalBorrower = hydrate.balanceOf(borrower);
         (_collateral, borrowed, _time) = hydrate.getLoanByAddress(borrower);
         hydrate.closePosition(borrowed);
 
+        // Backing increases
         assertEq(preBacking + borrowed, KHYPE.balanceOf(address(hydrate)));
 
+        // Borrower gets collateral back
+        assertEq(preBalBorrower + _collateral, hydrate.balanceOf(borrower));
         vm.stopBroadcast();
     }
 }
