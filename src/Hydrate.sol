@@ -77,8 +77,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     uint256 public constant DUST = 1000;
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant PROTOCOL_FEE_SHARE_BPS = 3500;
-    address public constant DEAD_ADDRESS =
-        0x000000000000000000000000000000000000dEaD;
+    address public constant DEAD_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     //Mutable, owner-only setting variables
     IERC20 public KHYPE;
@@ -111,12 +110,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Initializes the Snow contract
     /// @dev Sets the initial lastLiquidateDate and snowTreasury, deploy iSnow and snowGT
-    constructor(
-        address _owner,
-        address _treasury,
-        address _KHYPE,
-        address _stakeHub
-    ) {
+    constructor(address _owner, address _treasury, address _KHYPE, address _stakeHub) {
         require(_owner != address(0), "Owner cannot be 0 address");
         require(_treasury != address(0), "Treasury cannot be 0 address");
         require(_KHYPE != address(0), "KHYPE cannot be 0 address");
@@ -187,10 +181,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param _maxFreeze The new maximum supply of SNOW
     /// @dev Requires its increasing and higher than total freezed
     function increaseMaxSupply(uint256 _maxFreeze) external onlyOwner {
-        require(
-            _maxFreeze > totalFreezed,
-            "Max supply must be greater than total freezed"
-        );
+        require(_maxFreeze > totalFreezed, "Max supply must be greater than total freezed");
         require(_maxFreeze > maxFreeze, "Increase only");
         maxFreeze = _maxFreeze;
         emit MaxFreezeUpdated(_maxFreeze);
@@ -211,10 +202,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function setFreezeFee(uint256 amount) external onlyOwner {
         require(amount >= 100, "freeze fee must be greater than 1%");
         require(amount <= 500, "freeze fee must be less than 5%");
-        require(
-            amount >= leverageFeeBps,
-            "freeze fee must be greater than leverage fee"
-        );
+        require(amount >= leverageFeeBps, "freeze fee must be greater than leverage fee");
         freezeFeeBps = amount;
         emit FreezeFeeUpdated(amount);
     }
@@ -225,10 +213,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function setLeverageFee(uint256 amount) external onlyOwner {
         require(amount >= 50, "leverage fee must be greater than 0.5%");
         require(amount <= 250, "leverage fee must be less than 2.5%");
-        require(
-            amount <= freezeFeeBps,
-            "leverage fee must be less than freeze fee"
-        );
+        require(amount <= freezeFeeBps, "leverage fee must be less than freeze fee");
         leverageFeeBps = amount;
         emit LeverageFeeUpdated(amount);
     }
@@ -254,10 +239,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev  Applies to bribe bounty and SnowGT
     /// @param _polFeeBps Fee in basis points
     function setPolFee(uint256 _polFeeBps) external onlyOwner {
-        require(
-            _polFeeBps <= PROTOCOL_FEE_SHARE_BPS,
-            "POL fee must be less than overall fee"
-        );
+        require(_polFeeBps <= PROTOCOL_FEE_SHARE_BPS, "POL fee must be less than overall fee");
         polFeeBps = _polFeeBps;
         emit PolFeeUpdated(_polFeeBps);
     }
@@ -266,10 +248,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev Note 100% of the fee is added to SNOW contract and adds to backing via bribe bounty
     /// @param _tokenLockerFeeBps Fee in basis points
     function setTokenLockerFee(uint256 _tokenLockerFeeBps) external onlyOwner {
-        require(
-            _tokenLockerFeeBps <= 1000,
-            "Token locker fee must be less than or equal to 10%"
-        );
+        require(_tokenLockerFeeBps <= 1000, "Token locker fee must be less than or equal to 10%");
         tokenLockerFeeBps = _tokenLockerFeeBps;
         emit TokenLockerFeeUpdated(_tokenLockerFeeBps);
     }
@@ -279,10 +258,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev No event here as this is just a wrapper for the method on iSnow contract
     /// @param _contract Contract to whitelist / blacklist
     /// @param _allowed Whether to enable or disable
-    function setISnowMinter(
-        address _contract,
-        bool _allowed
-    ) external onlyOwner {
+    function setISnowMinter(address _contract, bool _allowed) external onlyOwner {
         stakedSnow.setMinter(_contract, _allowed);
     }
 
@@ -305,10 +281,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param _token Address of the token to recover
     /// @dev Unruggable because it can only recover erc20s that are not snow (mistakenly donated or farmed tokens)
     function recoverERC20(address _token) external onlyOwner {
-        require(
-            _token != address(this),
-            "Snow: can only recover erc20s that are not snow"
-        );
+        require(_token != address(this), "Snow: can only recover erc20s that are not snow");
         _token.safeTransfer(msg.sender, _token.balanceOf(address(this)));
     }
 
@@ -324,9 +297,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev Cannot claim SNOW tokens.
     /// @dev Built-in fee collection allows SNOW to add *any* ERC20 token to its backing
     /// @param tokens The list of ERC-20 token addresses to collect.
-    function claimBribeBounty(
-        address[] calldata tokens
-    ) external payable nonReentrant {
+    function claimBribeBounty(address[] calldata tokens) external payable nonReentrant {
         require(msg.value == bribeBounty, "Incorrect bounty amount");
 
         uint256 length = tokens.length;
@@ -358,24 +329,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param token ERC20 token to lock
     /// @param amount Amount of token to lock
     /// @param unlockTime Time to unlock token
-    function lockTokens(
-        address token,
-        uint256 amount,
-        uint256 unlockTime
-    ) external nonReentrant {
+    function lockTokens(address token, uint256 amount, uint256 unlockTime) external nonReentrant {
         require(token != address(this), "Cannot lock SNOW tokens");
-        require(
-            unlockTime > block.timestamp,
-            "Unlock time must be in the future"
-        );
+        require(unlockTime > block.timestamp, "Unlock time must be in the future");
         require(amount > 0, "Amount must be greater than 0");
         LockedToken storage userLock = lockedTokens[msg.sender][token];
 
         if (userLock.amount > 0) {
-            require(
-                unlockTime >= userLock.unlockTime,
-                "Cannot shorten lock time"
-            );
+            require(unlockTime >= userLock.unlockTime, "Cannot shorten lock time");
         }
         uint256 snowFee = (amount * tokenLockerFeeBps) / BPS_DENOMINATOR; //100% to backing
         uint256 lockAmount = amount - snowFee;
@@ -394,10 +355,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function unlockTokens(address token) external nonReentrant {
         LockedToken storage userLock = lockedTokens[msg.sender][token];
         require(userLock.amount > 0, "No tokens locked");
-        require(
-            block.timestamp >= userLock.unlockTime,
-            "Unlock time not reached"
-        );
+        require(block.timestamp >= userLock.unlockTime, "Unlock time not reached");
         uint256 amount = userLock.amount;
         delete lockedTokens[msg.sender][token];
         totalLockedTokens[token] -= amount;
@@ -415,18 +373,12 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function claimSnowGT(address rewardVault) external nonReentrant {
         require(snowGTEnabled, "SnowGT not enabled");
         uint256 bgtBalanceBefore = BGT.balanceOf(snowTreasury); //First, claim the BGT into the snowTreasury
-        uint256 bgtClaimed = IRewardVault(rewardVault).getReward(
-            msg.sender,
-            snowTreasury
-        );
+        uint256 bgtClaimed = IRewardVault(rewardVault).getReward(msg.sender, snowTreasury);
         require(bgtClaimed > 0, "No reward to claim");
         uint256 bgtBalanceAfter = BGT.balanceOf(snowTreasury);
 
         //Confirm that the amount claimed per rewardVault contract matches the BGT balance change (to avoid fake reward vaults)
-        require(
-            bgtClaimed == bgtBalanceAfter - bgtBalanceBefore,
-            "Incorrect reward amount, something went wrong"
-        );
+        require(bgtClaimed == bgtBalanceAfter - bgtBalanceBefore, "Incorrect reward amount, something went wrong");
 
         //Mint SnowGT
         uint256 snowGTFee = (bgtClaimed * polFeeBps) / BPS_DENOMINATOR;
@@ -480,12 +432,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _transfer(msg.sender, address(this), snowAmount);
         uint256 iSNOWToMint = totalStakedSnow == 0
             ? snowAmount
-            : Math.mulDiv(
-                snowAmount,
-                stakedSnow.totalSupply(),
-                totalStakedSnow,
-                Math.Rounding.Floor
-            );
+            : Math.mulDiv(snowAmount, stakedSnow.totalSupply(), totalStakedSnow, Math.Rounding.Floor);
 
         require(iSNOWToMint > 0, "Stake amount too small, rounded to 0");
         totalStakedSnow += snowAmount;
@@ -500,10 +447,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function requestUnstakeSnow(uint256 iSnowAmount) external nonReentrant {
         //        require(stakingEnabled, "Staking is disabled");
         require(iSnowAmount > 0, "Must request unstake more than 0");
-        require(
-            iSnowAmount <= stakedSnow.balanceOf(msg.sender),
-            "Invalid iSNOW amount"
-        );
+        require(iSnowAmount <= stakedSnow.balanceOf(msg.sender), "Invalid iSNOW amount");
         unstakeRequestTime[msg.sender] = block.timestamp;
         unstakeRequestAmount[msg.sender] = iSnowAmount;
         emit UnstakeRequested(msg.sender, iSnowAmount);
@@ -513,29 +457,12 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param iSnowAmount Amount of iSnow to unstake
     function unstakeSnow(uint256 iSnowAmount) external nonReentrant {
         //        require(stakingEnabled, "Staking is disabled");
-        require(
-            unstakeRequestTime[msg.sender] > 0,
-            "Must request unstake first"
-        );
-        require(
-            block.timestamp >= unstakeRequestTime[msg.sender] + 24 hours,
-            "Must wait 24 hours after request"
-        );
+        require(unstakeRequestTime[msg.sender] > 0, "Must request unstake first");
+        require(block.timestamp >= unstakeRequestTime[msg.sender] + 24 hours, "Must wait 24 hours after request");
         require(iSnowAmount > 0, "Must unstake more than 0");
-        require(
-            unstakeRequestAmount[msg.sender] == iSnowAmount,
-            "Must unstake requested amount"
-        );
-        require(
-            stakedSnow.balanceOf(msg.sender) >= iSnowAmount,
-            "Not enough iSNOW"
-        );
-        uint256 snowAmount = Math.mulDiv(
-            iSnowAmount,
-            totalStakedSnow,
-            stakedSnow.totalSupply(),
-            Math.Rounding.Floor
-        );
+        require(unstakeRequestAmount[msg.sender] == iSnowAmount, "Must unstake requested amount");
+        require(stakedSnow.balanceOf(msg.sender) >= iSnowAmount, "Not enough iSNOW");
+        uint256 snowAmount = Math.mulDiv(iSnowAmount, totalStakedSnow, stakedSnow.totalSupply(), Math.Rounding.Floor);
         require(snowAmount > 0, "Unstake amount too small, rounded to 0");
         totalStakedSnow -= snowAmount;
         stakedSnow.burn(msg.sender, iSnowAmount); //Burn iSNOW 1:1
@@ -553,10 +480,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //     _freezeSnow(receiver);
     // }
 
-    function freezeKHYPE(
-        address receiver,
-        uint256 amount
-    ) external nonReentrant {
+    function freezeKHYPE(address receiver, uint256 amount) external nonReentrant {
         KHYPE.transferFrom(msg.sender, address(this), amount);
         _freezeSnow(receiver, amount);
     }
@@ -579,8 +503,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         // Calculate amount of snow to recieve
         uint256 snow = AVAXtoSNOWFloor(amount);
-        uint256 snowToFreeze = (snow * (BPS_DENOMINATOR - freezeFeeBps)) /
-            BPS_DENOMINATOR;
+        uint256 snowToFreeze = (snow * (BPS_DENOMINATOR - freezeFeeBps)) / BPS_DENOMINATOR;
 
         if (msg.sender == freezer) {
             // check if we need to increase max supply
@@ -595,11 +518,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _freeze(receiver, snowToFreeze);
 
         // Calculate Treasury Fee and deduct
-        uint256 treasuryAmount = (amount *
-            freezeFeeBps *
-            PROTOCOL_FEE_SHARE_BPS) /
-            BPS_DENOMINATOR /
-            BPS_DENOMINATOR;
+        uint256 treasuryAmount = (amount * freezeFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
         KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
@@ -620,14 +539,11 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _burn(msg.sender, snow);
 
         // Payment to sender
-        uint256 avaxToPay = (avax * (BPS_DENOMINATOR - burnFeeBps)) /
-            BPS_DENOMINATOR;
+        uint256 avaxToPay = (avax * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
         KHYPE.safeTransfer(msg.sender, avaxToPay);
 
         // Treasury fee
-        uint256 treasuryAmount = (avax * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) /
-            BPS_DENOMINATOR /
-            BPS_DENOMINATOR;
+        uint256 treasuryAmount = (avax * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
         KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
@@ -635,67 +551,47 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         emit Burn(msg.sender, avaxToPay, snow);
     }
 
+    // TODO: Accept $HYPE as well?
     /// @notice Creates a leveraged position
     /// @param avax The amount of AVAX to loop
     /// @param numberOfDays The duration of the loan in days
     /// @dev Requires trading to be started
     ///     Creates a loan with collateral and borrowed amount
-    function loop(
-        uint256 avax,
-        uint256 numberOfDays
-    ) public payable nonReentrant {
+    function loop(uint256 avax, uint256 numberOfDays) public nonReentrant {
         require(started, "Trading must be initialized");
         require(borrowingEnabled, "Borrowing is disabled");
-        require(
-            numberOfDays < 366,
-            "Max borrow/extension must be 365 days or less"
-        );
+        require(numberOfDays < 366, "Max borrow/extension must be 365 days or less");
 
         Loan memory userLoan = activeLoans[msg.sender];
         if (userLoan.borrowed != 0) {
             if (isLoanExpired(msg.sender)) {
                 delete activeLoans[msg.sender];
             }
-            require(
-                activeLoans[msg.sender].borrowed == 0,
-                "Use account with no loans"
-            );
+            require(activeLoans[msg.sender].borrowed == 0, "Use account with no loans");
         }
 
         liquidate();
-        uint256 endDate = getDayStart(
-            (numberOfDays * 1 days) + block.timestamp
-        );
+        uint256 endDate = getDayStart((numberOfDays * 1 days) + block.timestamp);
 
-        (
-            uint256 freezeFee,
-            uint256 userBorrow,
-            uint256 overCollateralizationAmount,
-            uint256 interestFee
-        ) = loopCalcs(avax, numberOfDays);
+        (uint256 freezeFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interestFee) =
+            loopCalcs(avax, numberOfDays);
 
-        uint256 totalAvaxRequired = overCollateralizationAmount +
-            freezeFee +
-            interestFee;
-
-        uint256 feeOverage;
-        if (msg.value > totalAvaxRequired) {
-            feeOverage = msg.value - totalAvaxRequired;
-            _sendAvax(msg.sender, feeOverage);
-        }
-        require(
-            msg.value - feeOverage == totalAvaxRequired,
-            "Insufficient avax fee sent"
-        );
+        uint256 totalAvaxRequired = overCollateralizationAmount + freezeFee + interestFee;
+        KHYPE.safeTransferFrom(msg.sender, address(this), totalAvaxRequired);
+        // uint256 feeOverage;
+        // if (msg.value > totalAvaxRequired) {
+        //     feeOverage = msg.value - totalAvaxRequired;
+        //     _sendAvax(msg.sender, feeOverage);
+        // }
+        // require(msg.value - feeOverage == totalAvaxRequired, "Insufficient avax fee sent");
 
         uint256 userAvax = avax - freezeFee;
         uint256 userSnow = AVAXtoSNOWLev(userAvax, totalAvaxRequired);
         _freeze(address(this), userSnow);
 
-        uint256 treasuryAmount = ((freezeFee + interestFee) *
-            PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
+        uint256 treasuryAmount = ((freezeFee + interestFee) * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "Fees must be higher than dust");
-        _sendAvax(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
         _addLoansOnDate(userBorrow, userSnow, endDate);
         activeLoans[msg.sender] = Loan({
@@ -707,14 +603,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         });
 
         _riseOnly(avax);
-        emit Loop(
-            msg.sender,
-            avax,
-            numberOfDays,
-            userSnow,
-            userBorrow,
-            totalAvaxRequired
-        );
+        emit Loop(msg.sender, avax, numberOfDays, userSnow, userBorrow, totalAvaxRequired);
     }
 
     /// @notice Creates a loan by borrowing AVAX against SNOW collateral
@@ -724,30 +613,21 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @dev Use increaseBorrow with existing loan
     function borrow(uint256 avax, uint256 numberOfDays) public nonReentrant {
         require(borrowingEnabled, "Borrowing is disabled");
-        require(
-            numberOfDays <= 365,
-            "Max borrow/extension must be 365 days or less"
-        );
+        require(numberOfDays <= 365, "Max borrow/extension must be 365 days or less");
         require(avax != 0, "Must borrow more than 0");
         if (isLoanExpired(msg.sender)) {
             delete activeLoans[msg.sender];
         }
-        require(
-            activeLoans[msg.sender].borrowed == 0,
-            "Use increaseBorrow to borrow more"
-        );
+        require(activeLoans[msg.sender].borrowed == 0, "Use increaseBorrow to borrow more");
 
         liquidate();
-        uint256 endDate = getDayStart(
-            (numberOfDays * 1 days) + block.timestamp
-        );
+        uint256 endDate = getDayStart((numberOfDays * 1 days) + block.timestamp);
 
         uint256 newUserBorrow = (avax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
 
         uint256 avaxFee = getInterestFee(newUserBorrow, numberOfDays);
 
-        uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) /
-            BPS_DENOMINATOR;
+        uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
 
         uint256 userSnow = AVAXtoSNOWNoTradeCeil(avax); //Rounds up borrow amount (in favor of protocol)
 
@@ -768,14 +648,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _addLoansOnDate(newUserBorrow, userSnow, endDate);
 
         _riseOnly(avaxFee);
-        emit Borrow(
-            msg.sender,
-            avax,
-            numberOfDays,
-            userSnow,
-            newUserBorrow,
-            avaxFee
-        );
+        emit Borrow(msg.sender, avax, numberOfDays, userSnow, newUserBorrow, avaxFee);
     }
 
     /// @notice Increases an existing loan by borrowing more AVAX
@@ -797,23 +670,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 avaxFee = getInterestFee(newUserBorrow, newBorrowLength);
 
         uint256 userBorrowedInSnow = AVAXtoSNOWNoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
-        uint256 userExcessInSnow = userCollateral -
-            Math.mulDiv(
-                userBorrowedInSnow,
-                BPS_DENOMINATOR,
-                COLLATERAL_RATIO,
-                Math.Rounding.Ceil
-            ); //Rounds up (in favor of protocol)
+        uint256 userExcessInSnow =
+            userCollateral - Math.mulDiv(userBorrowedInSnow, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
 
         uint256 userSnow = AVAXtoSNOWNoTradeCeil(avax); //Rounds up borrow amount (in favor of protocol)
-        uint256 requireCollateralFromUser = userExcessInSnow >= userSnow
-            ? 0
-            : userSnow - userExcessInSnow;
+        uint256 requireCollateralFromUser = userExcessInSnow >= userSnow ? 0 : userSnow - userExcessInSnow;
 
         {
             uint256 newUserBorrowTotal = userBorrowed + newUserBorrow;
-            uint256 newUserCollateralTotal = userCollateral +
-                requireCollateralFromUser;
+            uint256 newUserCollateralTotal = userCollateral + requireCollateralFromUser;
             activeLoans[msg.sender] = Loan({
                 collateral: newUserCollateralTotal,
                 borrowed: newUserBorrowTotal,
@@ -828,8 +693,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         }
 
         {
-            uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) /
-                BPS_DENOMINATOR;
+            uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
             require(treasuryFee > DUST, "Fees must be higher than dust");
             KHYPE.safeTransfer(snowTreasury, treasuryFee);
         }
@@ -838,14 +702,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _addLoansOnDate(newUserBorrow, requireCollateralFromUser, userEndDate);
 
         _riseOnly(avaxFee);
-        emit Borrow(
-            msg.sender,
-            avax,
-            newBorrowLength,
-            userSnow,
-            newUserBorrow,
-            avaxFee
-        );
+        emit Borrow(msg.sender, avax, newBorrowLength, userSnow, newUserBorrow, avaxFee);
     }
 
     /// @notice Removes collateral from an active loan
@@ -855,19 +712,13 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         require(!isLoanExpired(msg.sender), "No active loans");
         liquidate();
         uint256 collateral = activeLoans[msg.sender].collateral;
-        uint256 remainingCollateralInAvax = SNOWtoAVAXFloor(
-            collateral - amount
-        ); //Rounds down user amount (in favor of protocol)
+        uint256 remainingCollateralInAvax = SNOWtoAVAXFloor(collateral - amount); //Rounds down user amount (in favor of protocol)
 
         require(
-            activeLoans[msg.sender].borrowed <=
-                (remainingCollateralInAvax * COLLATERAL_RATIO) /
-                    BPS_DENOMINATOR,
+            activeLoans[msg.sender].borrowed <= (remainingCollateralInAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR,
             "Require 99% collateralization rate"
         );
-        activeLoans[msg.sender].collateral =
-            activeLoans[msg.sender].collateral -
-            amount;
+        activeLoans[msg.sender].collateral = activeLoans[msg.sender].collateral - amount;
         _transfer(address(this), msg.sender, amount);
         _subtractLoansOnDate(0, amount, activeLoans[msg.sender].endDate);
 
@@ -883,10 +734,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         require(borrowed > amount, "Must repay less than borrowed amount");
         require(amount > 0, "Repay amount must be greater than 0");
         liquidate();
-        require(
-            !isLoanExpired(msg.sender),
-            "Your loan has been liquidated, cannot repay"
-        );
+        require(!isLoanExpired(msg.sender), "Your loan has been liquidated, cannot repay");
         uint256 newBorrow = borrowed - amount;
         activeLoans[msg.sender].borrowed = newBorrow;
         _subtractLoansOnDate(amount, 0, activeLoans[msg.sender].endDate);
@@ -909,11 +757,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         liquidate();
         _transfer(address(this), msg.sender, collateral);
         KHYPE.safeTransferFrom(msg.sender, address(this), amount);
-        _subtractLoansOnDate(
-            borrowed,
-            collateral,
-            activeLoans[msg.sender].endDate
-        );
+        _subtractLoansOnDate(borrowed, collateral, activeLoans[msg.sender].endDate);
 
         delete activeLoans[msg.sender];
         _riseOnly(0);
@@ -935,10 +779,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 burnFee = (collateralInAvax * burnFeeBps) / BPS_DENOMINATOR;
         uint256 collateralInAvaxAfterFee = collateralInAvax - burnFee;
 
-        require(
-            collateralInAvaxAfterFee >= borrowed,
-            "Not enough collateral to close position"
-        ); //This seems redundant, but fine to keep
+        require(collateralInAvaxAfterFee >= borrowed, "Not enough collateral to close position"); //This seems redundant, but fine to keep
 
         // Explanation of how it works:
 
@@ -968,20 +809,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Note this is the exact same outcome as Option 1
 
         uint256 toUser = collateralInAvaxAfterFee - borrowed;
-        uint256 treasuryFee = (burnFee * PROTOCOL_FEE_SHARE_BPS) /
-            BPS_DENOMINATOR;
+        uint256 treasuryFee = (burnFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
 
         if (toUser > 0) {
-            _sendAvax(msg.sender, toUser);
+            KHYPE.safeTransfer(msg.sender, toUser);
         }
 
         require(treasuryFee > DUST, "Fees must be higher than dust");
-        _sendAvax(snowTreasury, treasuryFee);
-        _subtractLoansOnDate(
-            borrowed,
-            collateral,
-            activeLoans[msg.sender].endDate
-        );
+        KHYPE.safeTransfer(snowTreasury, treasuryFee);
+        _subtractLoansOnDate(borrowed, collateral, activeLoans[msg.sender].endDate);
 
         delete activeLoans[msg.sender];
         _riseOnly(borrowed);
@@ -992,10 +828,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param numberOfDays Additional days to extend the loan
     /// @return The fee paid for the extension
     /// @dev Requires an active non-expired loan and payment of extension fee
-    function extendLoan(
-        uint256 numberOfDays,
-        uint256 loanAmount
-    ) public nonReentrant returns (uint256) {
+    function extendLoan(uint256 numberOfDays, uint256 loanAmount) public nonReentrant returns (uint256) {
         require(borrowingEnabled, "Borrowing is disabled");
         uint256 oldEndDate = activeLoans[msg.sender].endDate;
         uint256 borrowed = activeLoans[msg.sender].borrowed;
@@ -1009,8 +842,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         require(loanFee == loanAmount, "Loan extension fee incorrect");
         KHYPE.safeTransferFrom(msg.sender, address(this), loanAmount);
 
-        uint256 treasuryFee = (loanFee * PROTOCOL_FEE_SHARE_BPS) /
-            BPS_DENOMINATOR;
+        uint256 treasuryFee = (loanFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
         require(treasuryFee > DUST, "Fees must be higher than dust");
         liquidate();
         KHYPE.safeTransfer(snowTreasury, treasuryFee);
@@ -1019,19 +851,10 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _addLoansOnDate(borrowed, collateral, newEndDate);
         activeLoans[msg.sender].endDate = newEndDate;
         activeLoans[msg.sender].numberOfDays = numberOfDays + _numberOfDays;
-        require(
-            (newEndDate - block.timestamp) / 1 days < 366,
-            "Loan must be under 365 days"
-        );
+        require((newEndDate - block.timestamp) / 1 days < 366, "Loan must be under 365 days");
 
         _riseOnly(loanFee);
-        emit LoanExtended(
-            msg.sender,
-            numberOfDays,
-            collateral,
-            borrowed,
-            loanFee
-        );
+        emit LoanExtended(msg.sender, numberOfDays, collateral, borrowed, loanFee);
         return loanFee;
     }
 
@@ -1080,21 +903,12 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param collateral Amount of collateral in the loan
     /// @param date Expiration date of the loan
     /// @dev Updates global tracking variables and emits LoanDataUpdate event
-    function _addLoansOnDate(
-        uint256 borrowed,
-        uint256 collateral,
-        uint256 date
-    ) private {
+    function _addLoansOnDate(uint256 borrowed, uint256 collateral, uint256 date) private {
         collateralByDate[date] = collateralByDate[date] + collateral;
         loansByDate[date] = loansByDate[date] + borrowed;
         totalLoans = totalLoans + borrowed;
         totalCollateral = totalCollateral + collateral;
-        emit LoanDataUpdate(
-            collateralByDate[date],
-            loansByDate[date],
-            totalLoans,
-            totalCollateral
-        );
+        emit LoanDataUpdate(collateralByDate[date], loansByDate[date], totalLoans, totalCollateral);
     }
 
     /// @notice Subtracts loan data from the tracking by expiration date
@@ -1102,21 +916,12 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param collateral Amount of collateral to subtract
     /// @param date Expiration date of the loan
     /// @dev Updates global tracking variables and emits LoanDataUpdate event
-    function _subtractLoansOnDate(
-        uint256 borrowed,
-        uint256 collateral,
-        uint256 date
-    ) private {
+    function _subtractLoansOnDate(uint256 borrowed, uint256 collateral, uint256 date) private {
         collateralByDate[date] = collateralByDate[date] - collateral;
         loansByDate[date] = loansByDate[date] - borrowed;
         totalLoans = totalLoans - borrowed;
         totalCollateral = totalCollateral - collateral;
-        emit LoanDataUpdate(
-            collateralByDate[date],
-            loansByDate[date],
-            totalLoans,
-            totalCollateral
-        );
+        emit LoanDataUpdate(collateralByDate[date], loansByDate[date], totalLoans, totalCollateral);
     }
 
     /// @notice Performs safety checks after operations that affect the protocol's state
@@ -1158,28 +963,17 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Gets the total borrowed and collateral amounts expiring on a specific date
     /// @param date Date to check
     /// @return Borrowed amount and collateral amount expiring on the date
-    function getLoansExpiringByDate(
-        uint256 date
-    ) public view returns (uint256, uint256) {
-        return (
-            loansByDate[getDayStart(date)],
-            collateralByDate[getDayStart(date)]
-        );
+    function getLoansExpiringByDate(uint256 date) public view returns (uint256, uint256) {
+        return (loansByDate[getDayStart(date)], collateralByDate[getDayStart(date)]);
     }
 
     /// @notice Gets loan details for a specific address
     /// @param _address Address to check
     /// @return Collateral amount, borrowed amount, and end date of the loan
     /// @dev Returns zeros if the loan has expired
-    function getLoanByAddress(
-        address _address
-    ) public view returns (uint256, uint256, uint256) {
+    function getLoanByAddress(address _address) public view returns (uint256, uint256, uint256) {
         if (activeLoans[_address].endDate >= block.timestamp) {
-            return (
-                activeLoans[_address].collateral,
-                activeLoans[_address].borrowed,
-                activeLoans[_address].endDate
-            );
+            return (activeLoans[_address].collateral, activeLoans[_address].borrowed, activeLoans[_address].endDate);
         } else {
             return (0, 0, 0);
         }
@@ -1188,22 +982,16 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Calculates the leverage fee for a loan
     /// @param avax Amount of AVAX to borrow
     /// @param numberOfDays Duration of the loan in days
-    function loopCalcs(
-        uint256 avax,
-        uint256 numberOfDays
-    )
+    function loopCalcs(uint256 avax, uint256 numberOfDays)
         public
         view
-        returns (
-            uint256 freezeFee,
-            uint256 userBorrow,
-            uint256 overCollateralizationAmount,
-            uint256 interest
-        )
+        returns (uint256 freezeFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interest)
     {
         freezeFee = (avax * leverageFeeBps) / BPS_DENOMINATOR;
         uint256 userAvax = avax - freezeFee;
-        userBorrow = (userAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
+        // Account for burn fee in collateral ratio
+        uint256 adjustedRatio = (COLLATERAL_RATIO * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+        userBorrow = (userAvax * adjustedRatio) / BPS_DENOMINATOR;
         overCollateralizationAmount = userAvax - userBorrow;
         interest = getInterestFee(userBorrow, numberOfDays);
     }
@@ -1212,21 +1000,10 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param borrowed Amount borrowed
     /// @param numberOfDays Duration of the loan in days
     /// @return Interest fee amount
-    function getInterestFee(
-        uint256 borrowed,
-        uint256 numberOfDays
-    ) public view returns (uint256) {
-        uint256 interestFee = (borrowed *
-            INTEREST_APR_BPS *
-            numberOfDays *
-            1e18) /
-            365 /
-            BPS_DENOMINATOR /
-            1e18;
-        uint256 overCollateralizationAmount = (borrowed *
-            (BPS_DENOMINATOR - COLLATERAL_RATIO)) / COLLATERAL_RATIO;
-        uint256 burnFee = ((borrowed + overCollateralizationAmount) *
-            burnFeeBps) / BPS_DENOMINATOR;
+    function getInterestFee(uint256 borrowed, uint256 numberOfDays) public view returns (uint256) {
+        uint256 interestFee = (borrowed * INTEREST_APR_BPS * numberOfDays * 1e18) / 365 / BPS_DENOMINATOR / 1e18;
+        uint256 overCollateralizationAmount = (borrowed * (BPS_DENOMINATOR - COLLATERAL_RATIO)) / COLLATERAL_RATIO;
+        uint256 burnFee = ((borrowed + overCollateralizationAmount) * burnFeeBps) / BPS_DENOMINATOR;
 
         // Assume you have 100 AVAX worth of SNOW
         // Borrow 99 AVAX
@@ -1262,13 +1039,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param value Amount of SNOW to convert
     /// @return Equivalent amount in AVAX
     function SNOWtoAVAXFloor(uint256 value) public view returns (uint256) {
-        return
-            Math.mulDiv(
-                value,
-                getBacking(),
-                totalSupply(),
-                Math.Rounding.Floor
-            );
+        return Math.mulDiv(value, getBacking(), totalSupply(), Math.Rounding.Floor);
     }
 
     /// @notice Converts AVAX to SNOW tokens, To be used when Avax is already received from the user.
@@ -1276,13 +1047,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param value Amount of AVAX to convert
     /// @return Equivalent amount in SNOW
     function AVAXtoSNOWFloor(uint256 value) public view returns (uint256) {
-        return
-            Math.mulDiv(
-                value,
-                totalSupply(),
-                getBacking() - value,
-                Math.Rounding.Floor
-            );
+        return Math.mulDiv(value, totalSupply(), getBacking() - value, Math.Rounding.Floor);
     }
 
     /// @notice Converts AVAX to SNOW tokens with leverage fee consideration.
@@ -1290,10 +1055,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param value Amount of AVAX to convert
     /// @param totalAvaxRequired Net fee + overcollaterization amount received from the user
     /// @return Equivalent amount in SNOW
-    function AVAXtoSNOWLev(
-        uint256 value,
-        uint256 totalAvaxRequired
-    ) public view returns (uint256) {
+    function AVAXtoSNOWLev(uint256 value, uint256 totalAvaxRequired) public view returns (uint256) {
         uint256 backing = getBacking() - totalAvaxRequired;
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Floor);
     }
@@ -1301,9 +1063,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Converts AVAX to SNOW without receiving AVAX, Rounds up.
     /// @param value Amount of AVAX to convert
     /// @return Equivalent amount in SNOW (rounded up)
-    function AVAXtoSNOWNoTradeCeil(
-        uint256 value
-    ) public view returns (uint256) {
+    function AVAXtoSNOWNoTradeCeil(uint256 value) public view returns (uint256) {
         uint256 backing = getBacking();
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Ceil);
     }
@@ -1311,9 +1071,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Converts AVAX to SNOW without receiving AVAX. Rounds down.
     /// @param value Amount of AVAX to convert
     /// @return Equivalent amount in SNOW
-    function AVAXtoSNOWNoTradeFloor(
-        uint256 value
-    ) public view returns (uint256) {
+    function AVAXtoSNOWNoTradeFloor(uint256 value) public view returns (uint256) {
         uint256 backing = getBacking();
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Floor);
     }
@@ -1324,10 +1082,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Calculates the maximum borrowable amount and borrow details
     /// @param _user Address of the user
     /// @param _numberOfDays Duration of the loan in days
-    function getMaxBorrow(
-        address _user,
-        uint256 _numberOfDays
-    )
+    function getMaxBorrow(address _user, uint256 _numberOfDays)
         external
         view
         returns (uint256 userAvax, uint256 userBorrow, uint256 interestFee)
@@ -1350,33 +1105,21 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         // Note this is the same calculation as in increaseBorrow
         uint256 userBorrowedInSnow = AVAXtoSNOWNoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
-        return
-            userCollateral -
-            Math.mulDiv(
-                userBorrowedInSnow,
-                BPS_DENOMINATOR,
-                COLLATERAL_RATIO,
-                Math.Rounding.Ceil
-            ); //Rounds up (in favor of protocol)
+        return userCollateral - Math.mulDiv(userBorrowedInSnow, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
     }
 
     /// @notice Calculates the amount of SNOW you get by buying with AVAX
     /// @param avaxAmount Amount of AVAX to spend
     /// @return Amount of SNOW user would receive
-    function getAmountOutBuy(
-        uint256 avaxAmount
-    ) external view returns (uint256) {
+    function getAmountOutBuy(uint256 avaxAmount) external view returns (uint256) {
         uint256 snowAmount = AVAXtoSNOWNoTradeFloor(avaxAmount);
-        return
-            (snowAmount * (BPS_DENOMINATOR - freezeFeeBps)) / BPS_DENOMINATOR;
+        return (snowAmount * (BPS_DENOMINATOR - freezeFeeBps)) / BPS_DENOMINATOR;
     }
 
     /// @notice Calculates the amount of AVAX you get by selling SNOW
     /// @param snowAmount Amount of SNOW to sell
     /// @return Amount of AVAX user would receive
-    function getAmountOutSell(
-        uint256 snowAmount
-    ) external view returns (uint256) {
+    function getAmountOutSell(uint256 snowAmount) external view returns (uint256) {
         uint256 avaxAmount = SNOWtoAVAXFloor(snowAmount);
         return (avaxAmount * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
     }
@@ -1384,24 +1127,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Calculates the input Avax to call in loopCalcs given the totalAvaxRequired
     /// @param totalAvaxRequired = freezeFee + interest + overcollateralizationAmount
     /// @param numberOfDays Duration of the loan in days
-    function inverseLoopCalc(
-        uint256 totalAvaxRequired,
-        uint256 numberOfDays
-    ) public view returns (uint256 avax) {
+    function inverseLoopCalc(uint256 totalAvaxRequired, uint256 numberOfDays) public view returns (uint256 avax) {
         uint256 low = totalAvaxRequired * 5; //initial guess (5x - 100x leverage, it should always be within these bounds)
         uint256 high = totalAvaxRequired * 100;
         uint256 mid;
         while (low < high) {
             mid = (low + high + 1) / 2; // Bias towards upper range to avoid infinite loops
-            (
-                uint256 freezeFee,
-                ,
-                uint256 overCollateralizationAmount,
-                uint256 interest
-            ) = loopCalcs(mid, numberOfDays);
-            uint256 calculatedTotal = interest +
-                overCollateralizationAmount +
-                freezeFee;
+            (uint256 freezeFee,, uint256 overCollateralizationAmount, uint256 interest) = loopCalcs(mid, numberOfDays);
+            uint256 calculatedTotal = interest + overCollateralizationAmount + freezeFee;
             if (calculatedTotal < totalAvaxRequired) {
                 low = mid; // Move upwards
             } else {
@@ -1444,12 +1177,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param userBorrow Total borrowed AVAX after leverage
     /// @param fee Fee charged for leverage
     event Loop(
-        address indexed user,
-        uint256 avax,
-        uint256 numberOfDays,
-        uint256 userSnow,
-        uint256 userBorrow,
-        uint256 fee
+        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userSnow, uint256 userBorrow, uint256 fee
     );
 
     /// @notice Emitted when a user borrows AVAX against SNOW collateral
@@ -1460,12 +1188,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param newUserBorrow Total outstanding debt after borrowing
     /// @param fee Fee charged for borrowing
     event Borrow(
-        address indexed user,
-        uint256 avax,
-        uint256 numberOfDays,
-        uint256 userSnow,
-        uint256 newUserBorrow,
-        uint256 fee
+        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userSnow, uint256 newUserBorrow, uint256 fee
     );
 
     /// @notice Emitted when a user removes collateral
@@ -1485,13 +1208,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param collateral Amount of SNOW collateral liquidated
     /// @param toUser Amount returned to the user after closing position
     /// @param fee Fee charged for using the flash loan
-    event FlashBurn(
-        address indexed user,
-        uint256 borrowed,
-        uint256 collateral,
-        uint256 toUser,
-        uint256 fee
-    );
+    event FlashBurn(address indexed user, uint256 borrowed, uint256 collateral, uint256 toUser, uint256 fee);
 
     /// @notice Emitted when a loan is extended
     /// @param user Address of the borrower
@@ -1499,13 +1216,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param collateral Amount of SNOW held as collateral
     /// @param borrowed Amount of AVAX borrowed
     /// @param fee Fee charged for the extension
-    event LoanExtended(
-        address indexed user,
-        uint256 numberOfDays,
-        uint256 collateral,
-        uint256 borrowed,
-        uint256 fee
-    );
+    event LoanExtended(address indexed user, uint256 numberOfDays, uint256 collateral, uint256 borrowed, uint256 fee);
 
     /// @notice Emitted when the max supply is updated
     /// @param max New maximum supply
@@ -1550,10 +1261,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param totalBorrowed Total borrowed amount
     /// @param totalCollateral Total collateral amount
     event LoanDataUpdate(
-        uint256 collateralByDate,
-        uint256 borrowedByDate,
-        uint256 totalBorrowed,
-        uint256 totalCollateral
+        uint256 collateralByDate, uint256 borrowedByDate, uint256 totalBorrowed, uint256 totalCollateral
     );
 
     /// @notice Emitted when AVAX is sent
@@ -1566,12 +1274,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param bounty Amount of AVAX paid as bounty
     /// @param tokens List of ERC-20 tokens collected
     /// @param amounts Amounts of ERC-20 tokens collected
-    event BountyCollected(
-        address indexed sender,
-        uint256 indexed bounty,
-        address[] tokens,
-        uint256[] amounts
-    );
+    event BountyCollected(address indexed sender, uint256 indexed bounty, address[] tokens, uint256[] amounts);
 
     /// @notice Emitted when the bribe bounty is updated
     /// @param amount New bribe bounty amount
@@ -1586,32 +1289,19 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param token Address of the token
     /// @param lockAmount Amount of tokens locked
     /// @param unlockTime Time when the tokens can be unlocked
-    event TokenLocked(
-        address indexed sender,
-        address indexed token,
-        uint256 lockAmount,
-        uint256 unlockTime
-    );
+    event TokenLocked(address indexed sender, address indexed token, uint256 lockAmount, uint256 unlockTime);
 
     /// @notice Emitted when a token is unlocked
     /// @param sender Address of the user
     /// @param token Address of the token
     /// @param amount Amount of tokens unlocked
-    event TokenUnlocked(
-        address indexed sender,
-        address indexed token,
-        uint256 amount
-    );
+    event TokenUnlocked(address indexed sender, address indexed token, uint256 amount);
 
     /// @notice Emitted when SNOW is staked for iSNOW
     /// @param sender Address of the user
     /// @param snowAmount Amount of SNOW to stake
     /// @param iSnowAmount Amount of iSnow received
-    event Staked(
-        address indexed sender,
-        uint256 snowAmount,
-        uint256 iSnowAmount
-    );
+    event Staked(address indexed sender, uint256 snowAmount, uint256 iSnowAmount);
 
     /// @notice Emitted when iSnow is requested to be unstaked
     /// @param user Address of the user
@@ -1622,11 +1312,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param sender Address of the user
     /// @param snowAmount Amount of SNOW received
     /// @param iSnowAmount Amount of iSnow unstaked
-    event Unstaked(
-        address indexed sender,
-        uint256 snowAmount,
-        uint256 iSnowAmount
-    );
+    event Unstaked(address indexed sender, uint256 snowAmount, uint256 iSnowAmount);
 
     /// @notice Triggered when SNOW staking is enabled
     /// @param enabled Whether staking is enabled

@@ -7,6 +7,7 @@ import {Snow} from "./hydrate.sol";
 /// @notice Interface for the iSnow contract
 /// @dev iSNOW is the inflation token for the Snow protocol
 /// @dev iSNOW is minted by the Snow contract and burned by the Snow contract
+
 contract iSnow is ERC20 {
     Snow public immutable snow;
 
@@ -15,13 +16,11 @@ contract iSnow is ERC20 {
     }
 
     mapping(address => bool) public minters;
+
     event MinterSet(address _contract, bool _allowed);
 
     modifier onlyMinters() {
-        require(
-            msg.sender == address(snow) || minters[msg.sender],
-            "Only Snow or Minters"
-        );
+        require(msg.sender == address(snow) || minters[msg.sender], "Only Snow or Minters");
         _;
     }
 

@@ -56,12 +56,7 @@ contract HydrateTest is Test {
 
         IERC20 KHYPETwo = new MockKHYPE();
         IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
-        Snow hydrateTwo = new Snow(
-            adminTwo,
-            treasuryTwo,
-            address(KHYPETwo),
-            address(stakeHubTwo)
-        );
+        Snow hydrateTwo = new Snow(adminTwo, treasuryTwo, address(KHYPETwo), address(stakeHubTwo));
 
         vm.startBroadcast(adminTwo);
         KHYPETwo.approve(address(hydrateTwo), type(uint256).max);
@@ -95,10 +90,7 @@ contract HydrateTest is Test {
         uint256 expectedTreasury = 0.875 ether;
 
         // Check backing
-        assertEq(
-            preBal + (msgValue - expectedTreasury),
-            KHYPE.balanceOf(address(hydrate))
-        );
+        assertEq(preBal + (msgValue - expectedTreasury), KHYPE.balanceOf(address(hydrate)));
 
         // Check treasury
         assertEq(expectedTreasury, KHYPE.balanceOf(treasury));
@@ -146,10 +138,7 @@ contract HydrateTest is Test {
         uint256 expectedTreasury = 0.875 ether;
 
         // Check backing
-        assertEq(
-            preBal + (msgValue - expectedTreasury),
-            KHYPE.balanceOf(address(hydrate))
-        );
+        assertEq(preBal + (msgValue - expectedTreasury), KHYPE.balanceOf(address(hydrate)));
 
         // Check treasury
         assertEq(expectedTreasury, KHYPE.balanceOf(treasury));
@@ -221,8 +210,7 @@ contract HydrateTest is Test {
         // ===== Extend Loan =====
         preBal = KHYPE.balanceOf(address(treasury));
         preBacking = hydrate.balanceOf(address(hydrate));
-        (uint256 _collateral, uint256 borrowed, uint256 _time) = hydrate
-            .getLoanByAddress(borrower);
+        (uint256 _collateral, uint256 borrowed, uint256 _time) = hydrate.getLoanByAddress(borrower);
         uint256 loanFee = hydrate.getInterestFee(borrowed, 10);
 
         hydrate.extendLoan(10, loanFee);
@@ -251,6 +239,29 @@ contract HydrateTest is Test {
 
         // Borrower gets collateral back
         assertEq(preBalBorrower + _collateral, hydrate.balanceOf(borrower));
+        vm.stopBroadcast();
+    }
+
+    function test_loop() public {
+        _setup();
+
+        vm.startBroadcast(borrower);
+        KHYPE.approve(address(hydrate), type(uint256).max);
+        uint256 preBal = KHYPE.balanceOf(address(hydrate));
+        uint256 preBalTreasury = KHYPE.balanceOf(treasury);
+
+        hydrate.loop(90 ether, 10);
+
+        assertGt(KHYPE.balanceOf(address(hydrate)), preBal);
+        assertGt(KHYPE.balanceOf(treasury), preBalTreasury);
+
+        uint256 preBalBorrower = KHYPE.balanceOf(borrower);
+        preBalTreasury = KHYPE.balanceOf(treasury);
+        hydrate.flashBurn();
+
+        assertGt(KHYPE.balanceOf(treasury), preBalTreasury);
+        assertGt(KHYPE.balanceOf(borrower), preBalBorrower);
+
         vm.stopBroadcast();
     }
 }
