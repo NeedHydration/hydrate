@@ -32,7 +32,7 @@ contract HydrateTest is Test {
         vm.startBroadcast(admin);
 
         IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
-        IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
+        IMockKHYPE(address(KHYPE)).mint(minter, 10000 ether);
         IMockKHYPE(address(KHYPE)).mint(borrower, 10000 ether);
 
         KHYPE.approve(address(hydrate), type(uint256).max);
@@ -242,15 +242,55 @@ contract HydrateTest is Test {
         vm.stopBroadcast();
     }
 
+    function _setupFlashBurn() internal {
+        vm.deal(admin, 1000 ether);
+        vm.deal(minter, 1000 ether);
+
+        KHYPE = new MockKHYPE();
+        stakeHub = new MockStakeHub(address(KHYPE));
+        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub));
+
+        vm.startBroadcast(admin);
+
+        IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
+        IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
+        IMockKHYPE(address(KHYPE)).mint(borrower, 10000 ether);
+
+        KHYPE.approve(address(hydrate), type(uint256).max);
+
+        // // Enable minting and burning
+        // hydrate.{value: 6900 ether}();
+        hydrate.setStartKHYPE(6900 ether);
+
+        // // Increase Total supply
+        // // TODO: what should the total supply at deployment be?
+        uint256 newTotalSupply = hydrate.totalFreezed() * 2;
+        // hydrate.increaseMaxSupply(newTotalSupply);
+
+        vm.stopBroadcast();
+    }
+
     function test_loop() public {
         _setup();
 
         vm.startBroadcast(borrower);
         KHYPE.approve(address(hydrate), type(uint256).max);
+        IMockKHYPE(address(KHYPE)).mint(borrower, 9000 ether);
         uint256 preBal = KHYPE.balanceOf(address(hydrate));
         uint256 preBalTreasury = KHYPE.balanceOf(treasury);
 
-        hydrate.loop(90 ether, 10);
+        hydrate.loop(1000 ether, 300);
+
+        vm.stopBroadcast();
+
+        // Simulate price appreciation by minting and burning
+        vm.startBroadcast(minter);
+        KHYPE.approve(address(hydrate), type(uint256).max);
+        hydrate.freezeKHYPE(minter, 5000 ether);
+        hydrate.burn(4000 ether);
+        vm.stopBroadcast();
+
+        vm.startBroadcast(borrower);
 
         assertGt(KHYPE.balanceOf(address(hydrate)), preBal);
         assertGt(KHYPE.balanceOf(treasury), preBalTreasury);

@@ -748,7 +748,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Fully repays a loan and returns collateral
     /// @dev Requires an active non-expired loan and exact repayment amount
     /// @dev Applies a 1% fee on the collateral value
-    function closePosition(uint256 amount) public payable nonReentrant {
+    function closePosition(uint256 amount) public nonReentrant {
         uint256 borrowed = activeLoans[msg.sender].borrowed;
         uint256 collateral = activeLoans[msg.sender].collateral;
         require(!isLoanExpired(msg.sender), "No active loans");
@@ -989,9 +989,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     {
         freezeFee = (avax * leverageFeeBps) / BPS_DENOMINATOR;
         uint256 userAvax = avax - freezeFee;
-        // Account for burn fee in collateral ratio
-        uint256 adjustedRatio = (COLLATERAL_RATIO * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
-        userBorrow = (userAvax * adjustedRatio) / BPS_DENOMINATOR;
+        userBorrow = (userAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
         overCollateralizationAmount = userAvax - userBorrow;
         interest = getInterestFee(userBorrow, numberOfDays);
     }
