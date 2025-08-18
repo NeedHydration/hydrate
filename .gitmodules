@@ -10,3 +10,6 @@
 [submodule "lib/valantis-core"]
 	path = lib/valantis-core
 	url = https://github.com/ValantisLabs/valantis-core
+[submodule "lib/valantis-stex"]
+	path = lib/valantis-stex
+	url = https://github.com/ValantisLabs/valantis-stex
