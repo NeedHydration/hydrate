@@ -7,3 +7,6 @@
 [submodule "lib/solady"]
 	path = lib/solady
 	url = https://github.com/Vectorized/solady
+[submodule "lib/valantis-core"]
+	path = lib/valantis-core
+	url = https://github.com/ValantisLabs/valantis-core
