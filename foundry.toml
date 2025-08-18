@@ -6,7 +6,9 @@ fs_permissions = [{ access = "read-write", path = "./"}]
 
 remappings = [
     "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts",
-    "@solady/=lib/solady/src"
+    "@solady/=lib/solady/src",
+    "@valantis-core/=lib/valantis-core/src",
+    "@valantis-stex/=lib/valantis-stex/src"
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

@@ -23,6 +23,12 @@ import {iSnow} from "./iHydrate.sol";
 import {SnowGT} from "./HydrateGT.sol";
 import {IStakeHub} from "./interfaces/IStakeHub.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ISTEXAMM} from "@valantis-stex/interfaces/ISTEXAMM.sol";
+import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {
+    SovereignPoolSwapParams,
+    SovereignPoolSwapContextData
+} from "@valantis-core/pools/structs/SovereignPoolStructs.sol";
 
 // Snow
 contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
@@ -82,6 +88,10 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //Mutable, owner-only setting variables
     IERC20 public KHYPE;
     IStakeHub public stakeHub;
+    ISTEXAMM public stexAMM;
+    ISovereignPool public sovereignPool;
+    address public constant WHYPE = 0x5555555555555555555555555555555555555555;
+
     address payable public snowTreasury;
     // TODO: confirm these
     uint256 public freezeFeeBps = 250;
@@ -110,7 +120,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Initializes the Snow contract
     /// @dev Sets the initial lastLiquidateDate and snowTreasury, deploy iSnow and snowGT
-    constructor(address _owner, address _treasury, address _KHYPE, address _stakeHub) {
+    constructor(
+        address _owner,
+        address _treasury,
+        address _KHYPE,
+        address _stakeHub,
+        address _stexAMM,
+        address _sovereignPool
+    ) {
         require(_owner != address(0), "Owner cannot be 0 address");
         require(_treasury != address(0), "Treasury cannot be 0 address");
         require(_KHYPE != address(0), "KHYPE cannot be 0 address");
@@ -123,6 +140,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         snowGT = new SnowGT();
         KHYPE = IERC20(_KHYPE);
         stakeHub = IStakeHub(_stakeHub);
+        stexAMM = ISTEXAMM(_stexAMM);
+        sovereignPool = ISovereignPool(_sovereignPool);
     }
 
     //***************************************************
@@ -549,6 +568,55 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         _riseOnly(avax);
         emit Burn(msg.sender, avaxToPay, snow);
+    }
+
+    // TODO: natspec
+    // redeem function that unwraps backing KHYPE to HYPE
+    function burnHype(uint256 snow) external nonReentrant {
+        liquidate();
+
+        // Total Hype to be sent
+        uint256 hype = SNOWtoAVAXFloor(snow);
+
+        // Burn SNOW
+        _burn(msg.sender, snow);
+
+        // Handle fees before swapping
+        // Treasury fee
+        uint256 treasuryAmount = (hype * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
+        require(treasuryAmount > DUST, "must trade over min");
+        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
+
+        // Amount Hype the user will recieve
+        uint256 hypeToRecieve = (hype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+        // Calculate the expected amount of hype to recieve from DEX
+        uint256 amountOut = stexAMM.getAmountOut(address(KHYPE), hypeToRecieve, true);
+
+        // Leave as empty bytes for simple swap
+        SovereignPoolSwapContextData memory swapContext = SovereignPoolSwapContextData({
+            externalContext: "",
+            verifierContext: "",
+            swapCallbackContext: "",
+            swapFeeModuleContext: ""
+        });
+
+        // Define swap params
+        SovereignPoolSwapParams memory swapParams = SovereignPoolSwapParams({
+            isSwapCallback: false, // No need for callbacks here, simple swap
+            isZeroToOne: true, // KHYPE -> HYPE swap
+            amountIn: hypeToRecieve,
+            amountOutMin: amountOut,
+            deadline: block.timestamp + 10 minutes, // TODO: double check this
+            recipient: msg.sender,
+            swapTokenOut: WHYPE,
+            swapContext: swapContext
+        });
+
+        // Swap KHYPE to HYPE
+        sovereignPool.swap(swapParams);
+
+        _riseOnly(hype);
+        emit Burn(msg.sender, hypeToRecieve, snow);
     }
 
     // TODO: Accept $HYPE as well?

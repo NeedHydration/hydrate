@@ -10,6 +10,10 @@ import "./mocks/MockKHYPE.sol";
 import {IStakeHub} from "../src/interfaces/IStakeHub.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "forge-std/console.sol";
+import {ISTEXAMM} from "@valantis-stex/interfaces/ISTEXAMM.sol";
+import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {MockAMM} from "./mocks/MockAMM.sol";
+import {MockPool} from "./mocks/MockPool.sol";
 
 contract HydrateTest is Test {
     address admin = makeAddr("admin");
@@ -20,14 +24,20 @@ contract HydrateTest is Test {
     Snow hydrate;
     IStakeHub stakeHub;
     IERC20 KHYPE;
+    IMockKHYPE WHYPE;
+    ISTEXAMM stexAMM;
+    ISovereignPool sovereignPool;
 
     function _setup() internal {
         vm.deal(admin, 1000 ether);
         vm.deal(minter, 1000 ether);
 
+        WHYPE = new MockKHYPE();
+        stexAMM = new MockAMM();
+        sovereignPool = new MockPool(address(WHYPE));
         KHYPE = new MockKHYPE();
         stakeHub = new MockStakeHub(address(KHYPE));
-        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub));
+        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(stexAMM), address(sovereignPool));
 
         vm.startBroadcast(admin);
 
@@ -54,9 +64,19 @@ contract HydrateTest is Test {
         address treasuryTwo = makeAddr("treasury");
         vm.deal(adminTwo, 6900 ether);
 
+        IMockKHYPE WHYPETwo = new MockKHYPE();
+        ISTEXAMM stexAMMTwo = new MockAMM();
+        ISovereignPool sovereignPoolTwo = new MockPool(address(WHYPETwo));
         IERC20 KHYPETwo = new MockKHYPE();
         IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
-        Snow hydrateTwo = new Snow(adminTwo, treasuryTwo, address(KHYPETwo), address(stakeHubTwo));
+        Snow hydrateTwo = new Snow(
+            adminTwo,
+            treasuryTwo,
+            address(KHYPETwo),
+            address(stakeHubTwo),
+            address(stexAMMTwo),
+            address(sovereignPoolTwo)
+        );
 
         vm.startBroadcast(adminTwo);
         KHYPETwo.approve(address(hydrateTwo), type(uint256).max);
@@ -157,12 +177,34 @@ contract HydrateTest is Test {
         assertGt(msgValue, (KHYPE.balanceOf(minter) - preBalMinter));
 
         // Treasury balance (gets 35% of 2.5% of 10)
-        assertLt(preBal, KHYPE.balanceOf(treasury));
+        assertGt(KHYPE.balanceOf(treasury), preBal);
 
         // Backing should increase
         // Assert that the balance after is > burn with no fees
         assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
 
+        vm.stopBroadcast();
+    }
+
+    function test_burnHype() public {
+        _setup();
+
+        vm.startBroadcast(minter);
+
+        KHYPE.approve(address(hydrate), type(uint256).max);
+        hydrate.freezeKHYPE(minter, 100 ether);
+
+        uint256 preBalMinter = IERC20(address(WHYPE)).balanceOf(minter);
+        uint256 preBalTreasury = KHYPE.balanceOf(treasury);
+        uint256 preBalHydrate = KHYPE.balanceOf(address(hydrate));
+
+        uint256 msgValue = 10 ether;
+        hydrate.burnHype(msgValue);
+
+        assertGt(msgValue, IERC20(address(WHYPE)).balanceOf(minter) - preBalMinter);
+        assertGt(KHYPE.balanceOf(treasury), preBalTreasury);
+        assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
+        
         vm.stopBroadcast();
     }
 
@@ -239,34 +281,6 @@ contract HydrateTest is Test {
 
         // Borrower gets collateral back
         assertEq(preBalBorrower + _collateral, hydrate.balanceOf(borrower));
-        vm.stopBroadcast();
-    }
-
-    function _setupFlashBurn() internal {
-        vm.deal(admin, 1000 ether);
-        vm.deal(minter, 1000 ether);
-
-        KHYPE = new MockKHYPE();
-        stakeHub = new MockStakeHub(address(KHYPE));
-        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub));
-
-        vm.startBroadcast(admin);
-
-        IMockKHYPE(address(KHYPE)).mint(admin, 6900 ether);
-        IMockKHYPE(address(KHYPE)).mint(minter, 1000 ether);
-        IMockKHYPE(address(KHYPE)).mint(borrower, 10000 ether);
-
-        KHYPE.approve(address(hydrate), type(uint256).max);
-
-        // // Enable minting and burning
-        // hydrate.{value: 6900 ether}();
-        hydrate.setStartKHYPE(6900 ether);
-
-        // // Increase Total supply
-        // // TODO: what should the total supply at deployment be?
-        uint256 newTotalSupply = hydrate.totalFreezed() * 2;
-        // hydrate.increaseMaxSupply(newTotalSupply);
-
         vm.stopBroadcast();
     }
 
