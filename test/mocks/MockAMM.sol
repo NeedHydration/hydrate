@@ -59,7 +59,7 @@ contract MockAMM is ISTEXAMM {
 
     function supplyToken1Reserves(uint256) external {}
 
-    function getAmountOut(address token, uint256 amountOut, bool isInstantWithdraw) external pure returns (uint256) {
+    function getAmountOut(address, uint256 amountOut, bool) external pure returns (uint256) {
         return amountOut;
     }
 

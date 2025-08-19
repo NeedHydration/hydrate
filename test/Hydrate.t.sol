@@ -204,7 +204,7 @@ contract HydrateTest is Test {
         assertGt(msgValue, IERC20(address(WHYPE)).balanceOf(minter) - preBalMinter);
         assertGt(KHYPE.balanceOf(treasury), preBalTreasury);
         assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
-        
+
         vm.stopBroadcast();
     }
 

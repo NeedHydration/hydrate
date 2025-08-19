@@ -95,7 +95,7 @@ contract MockPool is ISovereignPool {
     }
 
     function depositLiquidity(uint256, uint256, address, bytes calldata, bytes calldata)
-        external
+        external pure
         returns (uint256, uint256)
     {
         return (0, 0);
@@ -112,11 +112,11 @@ contract MockPool is ISovereignPool {
         return address(0);
     }
 
-    function claimProtocolFees() external returns (uint256, uint256) {
+    function claimProtocolFees() external pure returns (uint256, uint256) {
         return (0, 0);
     }
 
-    function claimPoolManagerFees(uint256, uint256) external returns (uint256, uint256) {
+    function claimPoolManagerFees(uint256, uint256) external pure returns (uint256, uint256) {
         return (0, 0);
     }
 

@@ -48,11 +48,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 lastTimeCreated;
     }
 
-    //Token locker and POL integration
-    uint256 public polFeeBps = 1000;
-    uint256 public bribeBounty = 10_000 ether;
-    uint256 public tokenLockerFeeBps = 100;
-
     struct LockedToken {
         uint256 amount;
         uint256 unlockTime;
@@ -60,19 +55,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     mapping(address => mapping(address => LockedToken)) public lockedTokens; //user -> token -> LockTokens
     mapping(address => uint256) public totalLockedTokens; //Total locked balance per token
-
-    // Snow staking / iSNOW
-    iSnow public stakedSnow;
-    uint256 public totalStakedSnow;
-    mapping(address => uint256) public unstakeRequestTime;
-    mapping(address => uint256) public unstakeRequestAmount;
-    bool public stakingEnabled;
-
-    // SnowGT
-    address public constant BGT = 0x000000000000000000000000000000000000dEaD; //0x656b95E550C07a9ffe548bd4085c72418Ceb1dba;
-    // mapping(address => uint256) public snowGTRequested;
-    SnowGT public snowGT;
-    bool public snowGTEnabled;
 
     // Borrowing
     uint256 public constant COLLATERAL_RATIO = 9900;
@@ -136,8 +118,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _initializeOwner(_owner);
         lastLiquidateDate = getDayStart(block.timestamp);
         snowTreasury = payable(_treasury);
-        stakedSnow = new iSnow();
-        snowGT = new SnowGT();
         KHYPE = IERC20(_KHYPE);
         stakeHub = IStakeHub(_stakeHub);
         stexAMM = ISTEXAMM(_stexAMM);
@@ -254,48 +234,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         emit BorrowingEnabled(_enabled);
     }
 
-    /// @notice Set fee for POL rewards.
-    /// @dev  Applies to bribe bounty and SnowGT
-    /// @param _polFeeBps Fee in basis points
-    function setPolFee(uint256 _polFeeBps) external onlyOwner {
-        require(_polFeeBps <= PROTOCOL_FEE_SHARE_BPS, "POL fee must be less than overall fee");
-        polFeeBps = _polFeeBps;
-        emit PolFeeUpdated(_polFeeBps);
-    }
-
-    /// @notice Set fee for token locker
-    /// @dev Note 100% of the fee is added to SNOW contract and adds to backing via bribe bounty
-    /// @param _tokenLockerFeeBps Fee in basis points
-    function setTokenLockerFee(uint256 _tokenLockerFeeBps) external onlyOwner {
-        require(_tokenLockerFeeBps <= 1000, "Token locker fee must be less than or equal to 10%");
-        tokenLockerFeeBps = _tokenLockerFeeBps;
-        emit TokenLockerFeeUpdated(_tokenLockerFeeBps);
-    }
-
-    /// @notice Sets contracts allowed to mint/redeem iSnow
-    /// @dev This affects all SNOW stakers, so must be used cautiously
-    /// @dev No event here as this is just a wrapper for the method on iSnow contract
-    /// @param _contract Contract to whitelist / blacklist
-    /// @param _allowed Whether to enable or disable
-    function setISnowMinter(address _contract, bool _allowed) external onlyOwner {
-        stakedSnow.setMinter(_contract, _allowed);
-    }
-
-    /// @notice Enable staking - i.e. deploy iSnow and enable its functionality
-    function enableStaking(bool _enabled) external onlyOwner {
-        stakingEnabled = _enabled;
-        emit StakingEnabled(_enabled);
-    }
-
-    /// @notice Enable SnowGT - i.e. deploy SnowGT and enable its functionality
-    function enableSnowGT(bool _enabled) external onlyOwner {
-        snowGTEnabled = _enabled;
-        emit SnowGTEnabled(_enabled);
-    }
-
-    //***************************************************
-    //  ERC20 token compatibility (for Avaxchain POL bribe collection)
-
     /// @notice Recover ERC20 tokens from the contract after snow is freezed
     /// @param _token Address of the token to recover
     /// @dev Unruggable because it can only recover erc20s that are not snow (mistakenly donated or farmed tokens)
@@ -304,200 +242,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         _token.safeTransfer(msg.sender, _token.balanceOf(address(this)));
     }
 
-    /// @notice Set the bribe bounty amount
-    /// @param _amount Amount of bribe bounty to set
-    function setBribeBounty(uint256 _amount) external onlyOwner {
-        require(_amount >= 0, "Bounty must be greater than 0");
-        bribeBounty = _amount;
-        emit BribeBountyUpdated(_amount);
-    }
-
-    /// @notice Allows anyone to claim all ERC-20 fees in the contract by paying a fixed bounty.
-    /// @dev Cannot claim SNOW tokens.
-    /// @dev Built-in fee collection allows SNOW to add *any* ERC20 token to its backing
-    /// @param tokens The list of ERC-20 token addresses to collect.
-    function claimBribeBounty(address[] calldata tokens) external payable nonReentrant {
-        require(msg.value == bribeBounty, "Incorrect bounty amount");
-
-        uint256 length = tokens.length;
-        require(length > 0, "Must claim at least one token");
-        uint256[] memory amounts = new uint256[](length);
-
-        for (uint256 i = 0; i < length; i++) {
-            address token = tokens[i];
-            require(token != address(this), "Cannot claim SNOW tokens"); // Prevent collecting SNOW
-
-            uint256 balance = token.balanceOf(address(this));
-            uint256 locked = totalLockedTokens[token];
-            balance -= locked;
-            if (balance > 0) {
-                amounts[i] = balance;
-                token.safeTransfer(msg.sender, balance);
-            }
-        }
-
-        uint256 treasuryAmount = (msg.value * polFeeBps) / BPS_DENOMINATOR;
-        require(treasuryAmount >= DUST, "Fee must be greater than dust");
-        _sendAvax(snowTreasury, treasuryAmount);
-
-        emit BountyCollected(msg.sender, bribeBounty, tokens, amounts);
-    }
-
-    /// @notice Lock tokens to keep them unruggable while improving SNOW backing
-    /// @dev We only support one lock per user / token, and it must be extended or added to
-    /// @param token ERC20 token to lock
-    /// @param amount Amount of token to lock
-    /// @param unlockTime Time to unlock token
-    function lockTokens(address token, uint256 amount, uint256 unlockTime) external nonReentrant {
-        require(token != address(this), "Cannot lock SNOW tokens");
-        require(unlockTime > block.timestamp, "Unlock time must be in the future");
-        require(amount > 0, "Amount must be greater than 0");
-        LockedToken storage userLock = lockedTokens[msg.sender][token];
-
-        if (userLock.amount > 0) {
-            require(unlockTime >= userLock.unlockTime, "Cannot shorten lock time");
-        }
-        uint256 snowFee = (amount * tokenLockerFeeBps) / BPS_DENOMINATOR; //100% to backing
-        uint256 lockAmount = amount - snowFee;
-
-        token.safeTransferFrom(msg.sender, address(this), amount);
-
-        userLock.amount += lockAmount;
-        userLock.unlockTime = unlockTime;
-        totalLockedTokens[token] += lockAmount;
-
-        emit TokenLocked(msg.sender, token, lockAmount, unlockTime);
-    }
-
-    /// @notice Unlock tokens previously locked with token locker
-    /// @param token ERC20 token to unlock
-    function unlockTokens(address token) external nonReentrant {
-        LockedToken storage userLock = lockedTokens[msg.sender][token];
-        require(userLock.amount > 0, "No tokens locked");
-        require(block.timestamp >= userLock.unlockTime, "Unlock time not reached");
-        uint256 amount = userLock.amount;
-        delete lockedTokens[msg.sender][token];
-        totalLockedTokens[token] -= amount;
-        token.safeTransfer(msg.sender, amount);
-        emit TokenUnlocked(msg.sender, token, amount);
-    }
-
-    //***************************************************
-    //  SnowGT
-
-    /// @notice Claim BGT rewards from POL through the SNOW protocol, and get SnowGT receipt token
-    /// @dev Requires the reward vault to be set up and the user to have rewards
-    /// @dev Requires Snow contract to have been set as the operator for the user in this reward vault
-    /// @param rewardVault address of the BGT whitelisted reward vault that the user has already staked to
-    function claimSnowGT(address rewardVault) external nonReentrant {
-        require(snowGTEnabled, "SnowGT not enabled");
-        uint256 bgtBalanceBefore = BGT.balanceOf(snowTreasury); //First, claim the BGT into the snowTreasury
-        uint256 bgtClaimed = IRewardVault(rewardVault).getReward(msg.sender, snowTreasury);
-        require(bgtClaimed > 0, "No reward to claim");
-        uint256 bgtBalanceAfter = BGT.balanceOf(snowTreasury);
-
-        //Confirm that the amount claimed per rewardVault contract matches the BGT balance change (to avoid fake reward vaults)
-        require(bgtClaimed == bgtBalanceAfter - bgtBalanceBefore, "Incorrect reward amount, something went wrong");
-
-        //Mint SnowGT
-        uint256 snowGTFee = (bgtClaimed * polFeeBps) / BPS_DENOMINATOR;
-        snowGT.mint(msg.sender, bgtClaimed - snowGTFee);
-        if (snowGTFee > 0) {
-            snowGT.mint(snowTreasury, snowGTFee);
-        }
-        emit SnowGTMinted(msg.sender, bgtClaimed - snowGTFee);
-    }
-
-    //TODO: staking and withdrawals to be enabled later, no need to overengineer
-    //    /// @notice Request redemption of SnowGT for SNOW
-    //    /// @dev You must transfer in the SnowGT tokens first, and the requests can be fulfilled
-    //    /// @param amount Amount of SnowGT to redeem
-    //    function requestRedeemSnowGT(uint256 amount) external nonReentrant {
-    //        require(snowGTEnabled, "SnowGT not enabled");
-    //        require(amount > 0, "Amount must be greater than 0");
-    //        snowGT.approve(address(this), amount);
-    //        snowGT.transferFrom(msg.sender, address(this), amount);
-    //        snowGTRequested[msg.sender] += amount;
-    //        emit SnowGTRequested(msg.sender, amount);
-    //    }
-    //
-    //    /// @notice Fulfill redemption request of snowGT by sending 1 AVAX worth of SNOW to the user
-    //    /// @dev snowTreasury holds the BGT and can fulfill the request
-    //    /// @param user Address of user
-    //    function fulfillRedeemSnowGT(address user) external nonReentrant {
-    //        require(msg.sender == snowTreasury, "Only snowTreasury");
-    //        require(snowGTEnabled, "SnowGT not enabled");
-    //        uint256 redemptionRequested = snowGTRequested[user];
-    //        require(redemptionRequested > 0, "No redemption requested");
-    //        snowGTRequested[user] = 0;
-    //        uint256 snowAmount = AVAXtoSNOWNoTradeCeil(redemptionRequested);
-    //        _transfer(address(msg.sender), user, snowAmount);
-    //        snowGT.burn(address(this), redemptionRequested);
-    //        emit SnowGTFulfilled(user, redemptionRequested, snowAmount);
-    //    }
-
-    //***************************************************
-    //  iSNOW / Inflation snow
-
-    /// @notice Stakes SNOW to mint iSNOW
-    /// @dev The rate is NOT 1:1, but floating. Based on total staked SNOW and total iSNOW supply
-    /// @dev iSNOW supply is elastic, and can be minted or burned by authorized contracts
-    /// @dev For example, iSNOW staking could be used to facilitate liquidity for GameFi (games of chance)
-    /// @param snowAmount Amount of SNOW to stake
-    function stakeSnow(uint256 snowAmount) external nonReentrant {
-        require(stakingEnabled, "Staking is disabled");
-        require(snowAmount > 0, "Must stake more than 0");
-
-        _transfer(msg.sender, address(this), snowAmount);
-        uint256 iSNOWToMint = totalStakedSnow == 0
-            ? snowAmount
-            : Math.mulDiv(snowAmount, stakedSnow.totalSupply(), totalStakedSnow, Math.Rounding.Floor);
-
-        require(iSNOWToMint > 0, "Stake amount too small, rounded to 0");
-        totalStakedSnow += snowAmount;
-        stakedSnow.mint(msg.sender, iSNOWToMint);
-
-        emit Staked(msg.sender, snowAmount, iSNOWToMint);
-    }
-
-    /// @notice Requests to unstake iSNOW into SNOW
-    /// @dev Must wait 24 hours after request before unstaking
-    /// @param iSnowAmount Amount of iSnow to unstake
-    function requestUnstakeSnow(uint256 iSnowAmount) external nonReentrant {
-        //        require(stakingEnabled, "Staking is disabled");
-        require(iSnowAmount > 0, "Must request unstake more than 0");
-        require(iSnowAmount <= stakedSnow.balanceOf(msg.sender), "Invalid iSNOW amount");
-        unstakeRequestTime[msg.sender] = block.timestamp;
-        unstakeRequestAmount[msg.sender] = iSnowAmount;
-        emit UnstakeRequested(msg.sender, iSnowAmount);
-    }
-
-    /// @notice Unstakes iSNOW into SNOW
-    /// @param iSnowAmount Amount of iSnow to unstake
-    function unstakeSnow(uint256 iSnowAmount) external nonReentrant {
-        //        require(stakingEnabled, "Staking is disabled");
-        require(unstakeRequestTime[msg.sender] > 0, "Must request unstake first");
-        require(block.timestamp >= unstakeRequestTime[msg.sender] + 24 hours, "Must wait 24 hours after request");
-        require(iSnowAmount > 0, "Must unstake more than 0");
-        require(unstakeRequestAmount[msg.sender] == iSnowAmount, "Must unstake requested amount");
-        require(stakedSnow.balanceOf(msg.sender) >= iSnowAmount, "Not enough iSNOW");
-        uint256 snowAmount = Math.mulDiv(iSnowAmount, totalStakedSnow, stakedSnow.totalSupply(), Math.Rounding.Floor);
-        require(snowAmount > 0, "Unstake amount too small, rounded to 0");
-        totalStakedSnow -= snowAmount;
-        stakedSnow.burn(msg.sender, iSnowAmount); //Burn iSNOW 1:1
-        _transfer(address(this), msg.sender, snowAmount);
-        unstakeRequestTime[msg.sender] = 0;
-        unstakeRequestAmount[msg.sender] = 0;
-        emit Unstaked(msg.sender, snowAmount, iSnowAmount);
-    }
-
     //***************************************************
     //  External functions
-
-    /// alias for freeze
-    // function buy(address receiver) external payable nonReentrant {
-    //     _freezeSnow(receiver);
-    // }
 
     function freezeKHYPE(address receiver, uint256 amount) external nonReentrant {
         KHYPE.transferFrom(msg.sender, address(this), amount);
