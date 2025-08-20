@@ -196,7 +196,7 @@ contract HydrateTest is Test {
         uint256 msgValue = 10 ether;
         hydrate.burnHype(msgValue);
 
-        assertGt(msgValue, IERC20(address(WHYPE)).balanceOf(minter) - preBalMinter);
+        assertGt(IERC20(address(WHYPE)).balanceOf(minter), preBalMinter);
         assertGt(KHYPE.balanceOf(treasury), preBalTreasury);
         assertGt(KHYPE.balanceOf(address(hydrate)), preBalHydrate - msgValue);
 

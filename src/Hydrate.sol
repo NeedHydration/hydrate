@@ -351,8 +351,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
             sqrtPriceLimitX96: 0
         });
 
-        // // Swap KHYPE to HYPE
-        // sovereignPool.swap(swapParams);
+        // Swap KHYPE to HYPE
+        swapRouter.exactInputSingle(swapParams);
 
         _riseOnly(hype);
         emit Burn(msg.sender, hypeToSwap, snow);
