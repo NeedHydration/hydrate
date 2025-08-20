@@ -23,8 +23,8 @@ import {iSnow} from "./iHydrate.sol";
 import {SnowGT} from "./HydrateGT.sol";
 import {IStakeHub} from "./interfaces/IStakeHub.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IQuoter} from "@v3-periphery/contracts/interfaces/IQuoter.sol";
-import {ISwapRouter} from "@v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {IQuoter} from "@v3-periphery/interfaces/IQuoter.sol";
+import {ISwapRouter} from "@v3-periphery/interfaces/ISwapRouter.sol";
 
 // Snow
 contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
@@ -103,8 +103,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         address _treasury,
         address _KHYPE,
         address _stakeHub,
-        address _qouter,
-        address _swapRouter,
+        address _quoter,
+        address _swapRouter
     ) {
         require(_owner != address(0), "Owner cannot be 0 address");
         require(_treasury != address(0), "Treasury cannot be 0 address");
@@ -332,7 +332,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Amount Hype the user will recieve
         uint256 hypeToRecieve = (hype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
         // Calculate the expected amount of hype to recieve from DEX
-        uint256 amountOut = stexAMM.getAmountOut(address(KHYPE), hypeToRecieve, true);
+        // uint256 amountOut = stexAMM.getAmountOut(address(KHYPE), hypeToRecieve, true);
 
         // TODO: fix me
 

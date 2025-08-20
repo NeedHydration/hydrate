@@ -10,10 +10,10 @@ import "./mocks/MockKHYPE.sol";
 import {IStakeHub} from "../src/interfaces/IStakeHub.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "forge-std/console.sol";
-import {IQuoter} from "@v3-periphery/contracts/interfaces/IQuoter.sol";
-import {ISwapRouter} from "@v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import {MockAMM} from "./mocks/MockAMM.sol";
-import {MockPool} from "./mocks/MockPool.sol";
+import {IQuoter} from "@v3-periphery/interfaces/IQuoter.sol";
+import {ISwapRouter} from "@v3-periphery/interfaces/ISwapRouter.sol";
+import {MockSwapRouter} from "./mocks/MockSwapRouter.sol";
+import {MockQuoter} from "./mocks/MockQuoter.sol";
 
 contract HydrateTest is Test {
     address admin = makeAddr("admin");
@@ -33,9 +33,9 @@ contract HydrateTest is Test {
         vm.deal(minter, 1000 ether);
 
         WHYPE = new MockKHYPE();
-        stexAMM = new MockAMM();
-        sovereignPool = new MockPool(address(WHYPE));
-        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(stexAMM), address(sovereignPool));
+        quoter = new MockQuoter();
+        swapRouter = new MockSwapRouter(address(WHYPE));
+        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(quoter), address(swapRouter));
 
         vm.startBroadcast(admin);
 
@@ -63,8 +63,8 @@ contract HydrateTest is Test {
         vm.deal(adminTwo, 6900 ether);
 
         IMockKHYPE WHYPETwo = new MockKHYPE();
-        ISTEXAMM stexAMMTwo = new MockAMM();
-        ISovereignPool sovereignPoolTwo = new MockPool(address(WHYPETwo));
+        IQuoter quoterTwo = new MockQuoter();
+        ISwapRouter swapRouterTwo = new MockSwapRouter(address(WHYPETwo));
         IERC20 KHYPETwo = new MockKHYPE();
         IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
         Snow hydrateTwo = new Snow(
@@ -72,8 +72,8 @@ contract HydrateTest is Test {
             treasuryTwo,
             address(KHYPETwo),
             address(stakeHubTwo),
-            address(stexAMMTwo),
-            address(sovereignPoolTwo)
+            address(quoterTwo),
+            address(swapRouterTwo)
         );
 
         vm.startBroadcast(adminTwo);
