@@ -23,12 +23,8 @@ import {iSnow} from "./iHydrate.sol";
 import {SnowGT} from "./HydrateGT.sol";
 import {IStakeHub} from "./interfaces/IStakeHub.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ISTEXAMM} from "@valantis-stex/interfaces/ISTEXAMM.sol";
-import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
-import {
-    SovereignPoolSwapParams,
-    SovereignPoolSwapContextData
-} from "@valantis-core/pools/structs/SovereignPoolStructs.sol";
+import {IQuoter} from "@v3-periphery/contracts/interfaces/IQuoter.sol";
+import {ISwapRouter} from "@v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 // Snow
 contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
@@ -70,8 +66,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //Mutable, owner-only setting variables
     IERC20 public KHYPE;
     IStakeHub public stakeHub;
-    ISTEXAMM public stexAMM;
-    ISovereignPool public sovereignPool;
+    IQuoter public quoter;
+    ISwapRouter public swapRouter;
     address public constant WHYPE = 0x5555555555555555555555555555555555555555;
 
     address payable public snowTreasury;
@@ -107,8 +103,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         address _treasury,
         address _KHYPE,
         address _stakeHub,
-        address _stexAMM,
-        address _sovereignPool
+        address _qouter,
+        address _swapRouter,
     ) {
         require(_owner != address(0), "Owner cannot be 0 address");
         require(_treasury != address(0), "Treasury cannot be 0 address");
@@ -120,8 +116,8 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         snowTreasury = payable(_treasury);
         KHYPE = IERC20(_KHYPE);
         stakeHub = IStakeHub(_stakeHub);
-        stexAMM = ISTEXAMM(_stexAMM);
-        sovereignPool = ISovereignPool(_sovereignPool);
+        quoter = IQuoter(_quoter);
+        swapRouter = ISwapRouter(_swapRouter);
     }
 
     //***************************************************
@@ -338,28 +334,30 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Calculate the expected amount of hype to recieve from DEX
         uint256 amountOut = stexAMM.getAmountOut(address(KHYPE), hypeToRecieve, true);
 
-        // Leave as empty bytes for simple swap
-        SovereignPoolSwapContextData memory swapContext = SovereignPoolSwapContextData({
-            externalContext: "",
-            verifierContext: "",
-            swapCallbackContext: "",
-            swapFeeModuleContext: ""
-        });
+        // TODO: fix me
 
-        // Define swap params
-        SovereignPoolSwapParams memory swapParams = SovereignPoolSwapParams({
-            isSwapCallback: false, // No need for callbacks here, simple swap
-            isZeroToOne: true, // KHYPE -> HYPE swap
-            amountIn: hypeToRecieve,
-            amountOutMin: amountOut,
-            deadline: block.timestamp + 10 minutes, // TODO: double check this
-            recipient: msg.sender,
-            swapTokenOut: WHYPE,
-            swapContext: swapContext
-        });
+        // // Leave as empty bytes for simple swap
+        // SovereignPoolSwapContextData memory swapContext = SovereignPoolSwapContextData({
+        //     externalContext: "",
+        //     verifierContext: "",
+        //     swapCallbackContext: "",
+        //     swapFeeModuleContext: ""
+        // });
 
-        // Swap KHYPE to HYPE
-        sovereignPool.swap(swapParams);
+        // // Define swap params
+        // SovereignPoolSwapParams memory swapParams = SovereignPoolSwapParams({
+        //     isSwapCallback: false, // No need for callbacks here, simple swap
+        //     isZeroToOne: true, // KHYPE -> HYPE swap
+        //     amountIn: hypeToRecieve,
+        //     amountOutMin: amountOut,
+        //     deadline: block.timestamp + 10 minutes, // TODO: double check this
+        //     recipient: msg.sender,
+        //     swapTokenOut: WHYPE,
+        //     swapContext: swapContext
+        // });
+
+        // // Swap KHYPE to HYPE
+        // sovereignPool.swap(swapParams);
 
         _riseOnly(hype);
         emit Burn(msg.sender, hypeToRecieve, snow);

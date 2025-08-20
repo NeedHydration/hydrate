@@ -10,8 +10,8 @@ import "./mocks/MockKHYPE.sol";
 import {IStakeHub} from "../src/interfaces/IStakeHub.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "forge-std/console.sol";
-import {ISTEXAMM} from "@valantis-stex/interfaces/ISTEXAMM.sol";
-import {ISovereignPool} from "@valantis-core/pools/interfaces/ISovereignPool.sol";
+import {IQuoter} from "@v3-periphery/contracts/interfaces/IQuoter.sol";
+import {ISwapRouter} from "@v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {MockAMM} from "./mocks/MockAMM.sol";
 import {MockPool} from "./mocks/MockPool.sol";
 
@@ -25,8 +25,8 @@ contract HydrateTest is Test {
     IStakeHub stakeHub;
     IERC20 KHYPE;
     IMockKHYPE WHYPE;
-    ISTEXAMM stexAMM;
-    ISovereignPool sovereignPool;
+    IQuoter quoter;
+    ISwapRouter swapRouter;
 
     function _setup() internal {
         vm.deal(admin, 1000 ether);
@@ -35,8 +35,6 @@ contract HydrateTest is Test {
         WHYPE = new MockKHYPE();
         stexAMM = new MockAMM();
         sovereignPool = new MockPool(address(WHYPE));
-        KHYPE = new MockKHYPE();
-        stakeHub = new MockStakeHub(address(KHYPE));
         hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(stexAMM), address(sovereignPool));
 
         vm.startBroadcast(admin);
