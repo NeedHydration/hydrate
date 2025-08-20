@@ -12,6 +12,7 @@ contract MockSwapRouter is ISwapRouter {
     }
 
     function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut) {
+        KHYPE.mint(params.recipient, params.amountIn);
         return 0;
     }
 

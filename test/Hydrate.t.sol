@@ -32,7 +32,9 @@ contract HydrateTest is Test {
         vm.deal(admin, 1000 ether);
         vm.deal(minter, 1000 ether);
 
+        KHYPE = new MockKHYPE();
         WHYPE = new MockKHYPE();
+        stakeHub = new MockStakeHub(address(KHYPE));
         quoter = new MockQuoter();
         swapRouter = new MockSwapRouter(address(WHYPE));
         hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(quoter), address(swapRouter));
@@ -68,12 +70,7 @@ contract HydrateTest is Test {
         IERC20 KHYPETwo = new MockKHYPE();
         IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
         Snow hydrateTwo = new Snow(
-            adminTwo,
-            treasuryTwo,
-            address(KHYPETwo),
-            address(stakeHubTwo),
-            address(quoterTwo),
-            address(swapRouterTwo)
+            adminTwo, treasuryTwo, address(KHYPETwo), address(stakeHubTwo), address(quoterTwo), address(swapRouterTwo)
         );
 
         vm.startBroadcast(adminTwo);

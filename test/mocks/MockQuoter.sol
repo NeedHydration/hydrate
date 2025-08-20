@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 import {IQuoter} from "@v3-periphery/interfaces/IQuoter.sol";
 
 contract MockQuoter is IQuoter {
-
     constructor() {}
 
     function quoteExactInput(bytes memory path, uint256 amountIn) external returns (uint256 amountOut) {

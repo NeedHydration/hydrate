@@ -330,37 +330,32 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         KHYPE.safeTransfer(snowTreasury, treasuryAmount);
 
         // Amount Hype the user will recieve
-        uint256 hypeToRecieve = (hype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+        uint256 hypeToSwap = (hype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+
+        // Fee param for swap, do highest tier
+        uint24 fee = 10000;
         // Calculate the expected amount of hype to recieve from DEX
-        // uint256 amountOut = stexAMM.getAmountOut(address(KHYPE), hypeToRecieve, true);
+        uint256 amountOut = quoter.quoteExactInputSingle(address(KHYPE), WHYPE, fee, hypeToSwap, 0);
+        // TODO: make slippage configurable?
+        uint256 amountOutWithSlippage = (amountOut * 98) / 100;
 
-        // TODO: fix me
-
-        // // Leave as empty bytes for simple swap
-        // SovereignPoolSwapContextData memory swapContext = SovereignPoolSwapContextData({
-        //     externalContext: "",
-        //     verifierContext: "",
-        //     swapCallbackContext: "",
-        //     swapFeeModuleContext: ""
-        // });
-
-        // // Define swap params
-        // SovereignPoolSwapParams memory swapParams = SovereignPoolSwapParams({
-        //     isSwapCallback: false, // No need for callbacks here, simple swap
-        //     isZeroToOne: true, // KHYPE -> HYPE swap
-        //     amountIn: hypeToRecieve,
-        //     amountOutMin: amountOut,
-        //     deadline: block.timestamp + 10 minutes, // TODO: double check this
-        //     recipient: msg.sender,
-        //     swapTokenOut: WHYPE,
-        //     swapContext: swapContext
-        // });
+        // Swap params
+        ISwapRouter.ExactInputSingleParams memory swapParams = ISwapRouter.ExactInputSingleParams({
+            tokenIn: address(KHYPE),
+            tokenOut: WHYPE,
+            fee: fee,
+            recipient: msg.sender,
+            deadline: block.timestamp + 10 minutes,
+            amountIn: hypeToSwap,
+            amountOutMinimum: amountOutWithSlippage,
+            sqrtPriceLimitX96: 0
+        });
 
         // // Swap KHYPE to HYPE
         // sovereignPool.swap(swapParams);
 
         _riseOnly(hype);
-        emit Burn(msg.sender, hypeToRecieve, snow);
+        emit Burn(msg.sender, hypeToSwap, snow);
     }
 
     // TODO: Accept $HYPE as well?
