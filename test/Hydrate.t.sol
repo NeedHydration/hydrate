@@ -2,9 +2,8 @@
 pragma solidity ^0.8.27;
 
 import "forge-std/Test.sol";
-import {Snow} from "../src/Hydrate.sol";
+import {Hydrate} from "../src/Hydrate.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {Snow} from "../src/Hydrate.sol";
 import {MockStakeHub} from "./mocks/MockStakeHub.sol";
 import "./mocks/MockKHYPE.sol";
 import {IStakeHub} from "../src/interfaces/IStakeHub.sol";
@@ -21,7 +20,7 @@ contract HydrateTest is Test {
     address minter = makeAddr("minter");
     address borrower = makeAddr("borrower");
 
-    Snow hydrate;
+    Hydrate hydrate;
     IStakeHub stakeHub;
     IERC20 KHYPE;
     IMockKHYPE WHYPE;
@@ -37,7 +36,7 @@ contract HydrateTest is Test {
         stakeHub = new MockStakeHub(address(KHYPE));
         quoter = new MockQuoter();
         swapRouter = new MockSwapRouter(address(WHYPE));
-        hydrate = new Snow(admin, treasury, address(KHYPE), address(stakeHub), address(quoter), address(swapRouter));
+        hydrate = new Hydrate(admin, treasury, address(KHYPE), address(stakeHub), address(quoter), address(swapRouter));
 
         vm.startBroadcast(admin);
 
@@ -53,7 +52,7 @@ contract HydrateTest is Test {
 
         // // Increase Total supply
         // // TODO: what should the total supply at deployment be?
-        uint256 newTotalSupply = hydrate.totalFreezed() * 2;
+        uint256 newTotalSupply = hydrate.totalHydrated() * 2;
         hydrate.increaseMaxSupply(newTotalSupply);
 
         vm.stopBroadcast();
@@ -69,7 +68,7 @@ contract HydrateTest is Test {
         ISwapRouter swapRouterTwo = new MockSwapRouter(address(WHYPETwo));
         IERC20 KHYPETwo = new MockKHYPE();
         IStakeHub stakeHubTwo = new MockStakeHub(address(KHYPETwo));
-        Snow hydrateTwo = new Snow(
+        Hydrate hydrateTwo = new Hydrate(
             adminTwo, treasuryTwo, address(KHYPETwo), address(stakeHubTwo), address(quoterTwo), address(swapRouterTwo)
         );
 
@@ -79,11 +78,11 @@ contract HydrateTest is Test {
 
         assertEq(KHYPETwo.balanceOf(address(hydrateTwo)), 6900 ether);
         assertEq(hydrateTwo.balanceOf(adminTwo), 6900 ether);
-        assertEq(hydrateTwo.totalFreezed(), 6900 ether);
+        assertEq(hydrateTwo.totalHydrated(), 6900 ether);
         assertEq(hydrateTwo.started(), true);
         assertEq(hydrateTwo.borrowingEnabled(), true);
-        assertEq(hydrateTwo.maxFreeze(), 6900 ether);
-        assertEq(hydrateTwo.totalFreezed(), 6900 ether);
+        assertEq(hydrateTwo.maxHydrate(), 6900 ether);
+        assertEq(hydrateTwo.totalHydrated(), 6900 ether);
 
         vm.stopBroadcast();
     }
@@ -96,7 +95,7 @@ contract HydrateTest is Test {
         uint256 msgValue = 100 ether;
 
         // ===== Mint =====
-        hydrate.freeze{value: msgValue}(minter);
+        hydrate.hydrate{value: msgValue}(minter);
 
         // 97.5% of mint goes to minter
         assertEq(97.5 ether, hydrate.balanceOf(minter));
@@ -144,7 +143,7 @@ contract HydrateTest is Test {
         uint256 msgValue = 100 ether;
 
         // ===== Mint =====
-        hydrate.freezeKHYPE(minter, msgValue);
+        hydrate.hydrateKHYPE(minter, msgValue);
 
         // 97.5% of mint goes to minter
         assertEq(97.5 ether, hydrate.balanceOf(minter));
@@ -187,7 +186,7 @@ contract HydrateTest is Test {
         vm.startBroadcast(minter);
 
         KHYPE.approve(address(hydrate), type(uint256).max);
-        hydrate.freezeKHYPE(minter, 100 ether);
+        hydrate.hydrateKHYPE(minter, 100 ether);
 
         uint256 preBalMinter = IERC20(address(WHYPE)).balanceOf(minter);
         uint256 preBalTreasury = KHYPE.balanceOf(treasury);
@@ -212,7 +211,7 @@ contract HydrateTest is Test {
         KHYPE.approve(address(hydrate), type(uint256).max);
 
         // ===== Mint and borrow =====
-        hydrate.freezeKHYPE(borrower, 1000 ether);
+        hydrate.hydrateKHYPE(borrower, 1000 ether);
 
         uint256 preBacking = hydrate.balanceOf(address(hydrate));
         uint256 preBal = KHYPE.balanceOf(address(treasury));
@@ -295,7 +294,7 @@ contract HydrateTest is Test {
         // Simulate price appreciation by minting and burning
         vm.startBroadcast(minter);
         KHYPE.approve(address(hydrate), type(uint256).max);
-        hydrate.freezeKHYPE(minter, 5000 ether);
+        hydrate.hydrateKHYPE(minter, 5000 ether);
         hydrate.burn(4000 ether);
         vm.stopBroadcast();
 

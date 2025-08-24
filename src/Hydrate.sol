@@ -1,9 +1,3 @@
-/*
-    TODO: REPLACE 
-	Snow
-	SNOW on Avalanche is based on BREAD.
-*/
-
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
@@ -18,39 +12,27 @@ import {IERC20Burnable} from "./interfaces/IERC20Burnable.sol";
 import {Panic} from "@openzeppelin/contracts/utils/Panic.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IRewardVault} from "./interfaces/IRewardVault.sol";
-import {InterfaceSNOW} from "./interfaces/InterfaceHydrate.sol";
-import {iSnow} from "./iHydrate.sol";
-import {SnowGT} from "./HydrateGT.sol";
 import {IStakeHub} from "./interfaces/IStakeHub.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IQuoter} from "@v3-periphery/interfaces/IQuoter.sol";
 import {ISwapRouter} from "@v3-periphery/interfaces/ISwapRouter.sol";
 
-// Snow
-contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
+contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
     using SafeTransferLib for address;
     using SafeERC20 for IERC20;
 
     /// @notice Struct representing a user's loan
-    /// @param collateral Amount of SNOW tokens staked as collateral
-    /// @param borrowed Amount of AVAX borrowed against the collateral
+    /// @param collateral Amount of tokens staked as collateral
+    /// @param borrowed Amount of kHYPE borrowed against the collateral
     /// @param endDate Timestamp when the loan expires
     /// @param numberOfDays Duration of the loan in days
     struct Loan {
-        uint256 collateral; // shares of token staked
-        uint256 borrowed; // user reward per token paid
+        uint256 collateral;
+        uint256 borrowed;
         uint256 endDate;
         uint256 numberOfDays;
         uint256 lastTimeCreated;
     }
-
-    struct LockedToken {
-        uint256 amount;
-        uint256 unlockTime;
-    }
-
-    mapping(address => mapping(address => LockedToken)) public lockedTokens; //user -> token -> LockTokens
-    mapping(address => uint256) public totalLockedTokens; //Total locked balance per token
 
     // Borrowing
     uint256 public constant COLLATERAL_RATIO = 9900;
@@ -70,19 +52,19 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     ISwapRouter public swapRouter;
     address public constant WHYPE = 0x5555555555555555555555555555555555555555;
 
-    address payable public snowTreasury;
+    address payable public hydrateTreasury;
     // TODO: confirm these
-    uint256 public freezeFeeBps = 250;
+    uint256 public hydrateFeeBps = 250;
     uint256 public burnFeeBps = 250;
     uint256 public leverageFeeBps = 142;
-    address public freezer;
+    address public hydrater;
 
     //Global state variables
     bool public started;
     uint256 public totalLoans;
     uint256 public totalCollateral;
-    uint256 public maxFreeze;
-    uint256 public totalFreezed;
+    uint256 public maxHydrate;
+    uint256 public totalHydrated;
     uint256 public prevPrice;
 
     //User state variables
@@ -93,11 +75,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     mapping(uint256 => uint256) public collateralByDate;
     uint256 public lastLiquidateDate;
 
-    //***************************************************
-    //  Constructor
-
-    /// @notice Initializes the Snow contract
-    /// @dev Sets the initial lastLiquidateDate and snowTreasury, deploy iSnow and snowGT
     constructor(
         address _owner,
         address _treasury,
@@ -113,40 +90,36 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
         _initializeOwner(_owner);
         lastLiquidateDate = getDayStart(block.timestamp);
-        snowTreasury = payable(_treasury);
+        hydrateTreasury = payable(_treasury);
         KHYPE = IERC20(_KHYPE);
         stakeHub = IStakeHub(_stakeHub);
         quoter = IQuoter(_quoter);
         swapRouter = ISwapRouter(_swapRouter);
     }
 
-    //***************************************************
-    //  ERC20 settings
     function name() public pure override returns (string memory) {
         return "Hydrate";
     }
 
     function symbol() public pure override returns (string memory) {
-        return "H20";
+        return "H2O";
     }
 
-    //***************************************************
-    //  Owner settings
 
     // TODO: move me
     function _start(uint256 amount) internal {
-        require(!started && maxFreeze == 0, "Trading already initialized");
+        require(!started && maxHydrate == 0, "Trading already initialized");
         require(amount == 6900 ether, "Must send 6900 KHYPE to start trading");
 
         started = true;
         borrowingEnabled = true;
 
-        uint256 masterFreezerFreeze = amount; // sets initial price to 1 AVAX
-        maxFreeze = masterFreezerFreeze;
+        uint256 masterHydraterHydrate = amount; // sets initial price to 1 KHYPE
+        maxHydrate = masterHydraterHydrate;
 
-        _freeze(msg.sender, masterFreezerFreeze);
+        _hydrate(msg.sender, masterHydraterHydrate);
 
-        emit MaxFreezeUpdated(masterFreezerFreeze);
+        emit MaxHydrateUpdated(masterHydraterHydrate);
         emit Started(true);
     }
 
@@ -155,51 +128,51 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         KHYPE.safeTransferFrom(msg.sender, address(this), amount);
     }
 
-    /// @notice Starts freezing and burning for the SNOW token
-    /// @dev Requires that fee address is set and must send 6900 AVAX
+    /// @notice Starts freezing and burning for the H2O token
+    /// @dev Requires that fee address is set and must send 6900 KHYPE 
     /// @dev Requires that the maxSupply is 0 and trading hasn't already started
-    /// Mints initial SNOW to the owner and burns 0.1 SNOW
+    /// Mints initial H2O to the owner and burns 0.1 H2O
     function setStart() public payable onlyOwner {
         _start(msg.value);
         stakeHub.stake{value: msg.value}();
     }
 
-    /// @notice Sets the freezer address
-    /// @param _freezer The address of the freezer contract
-    /// @dev The freezer contract can mint and increase total supply atomically
-    function setFreezer(address _freezer) external onlyOwner {
-        freezer = _freezer;
-        emit FreezerSet(_freezer);
+    /// @notice Sets the hydrater address
+    /// @param _hydrater The address of the hydrater contract
+    /// @dev The hydrater contract can mint and increase total supply atomically
+    function setHydrater(address _hydrater) external onlyOwner {
+        hydrater = _hydrater;
+        emit HydraterSet(_hydrater);
     }
 
-    /// @notice Increase the maxFreeze
-    /// @param _maxFreeze The new maximum supply of SNOW
-    /// @dev Requires its increasing and higher than total freezed
-    function increaseMaxSupply(uint256 _maxFreeze) external onlyOwner {
-        require(_maxFreeze > totalFreezed, "Max supply must be greater than total freezed");
-        require(_maxFreeze > maxFreeze, "Increase only");
-        maxFreeze = _maxFreeze;
-        emit MaxFreezeUpdated(_maxFreeze);
+    /// @notice Increase the maxHydrate
+    /// @param _maxHydrate The new maximum supply of H2O 
+    /// @dev Requires its increasing and higher than total hydrated
+    function increaseMaxSupply(uint256 _maxHydrate) external onlyOwner {
+        require(_maxHydrate > totalHydrated, "Max supply must be greater than total hydrated");
+        require(_maxHydrate > maxHydrate, "Increase only");
+        maxHydrate = _maxHydrate;
+        emit MaxHydrateUpdated(_maxHydrate);
     }
 
     /// @notice Sets the fee recipient address
     /// @param _address The new fee address
     /// @dev Cannot be the zero address
-    function setSnowTreasury(address _address) external onlyOwner {
-        require(_address != address(0), "Can't set fee address to 0 address");
-        snowTreasury = payable(_address);
-        emit SnowTreasuryUpdated(_address);
+    function setHydrateTreasury(address _address) external onlyOwner {
+        require(_address != address(0), "Can't set treasury address to 0 address");
+        hydrateTreasury = payable(_address);
+        emit HydrateTreasuryUpdated(_address);
     }
 
-    /// @notice Sets the freeze fee
-    /// @param amount The new freeze fee
+    /// @notice Sets the hydrate fee
+    /// @param amount The new hydrate fee
     /// @dev Fee is in basis points, must be between 1-5%
-    function setFreezeFee(uint256 amount) external onlyOwner {
-        require(amount >= 100, "freeze fee must be greater than 1%");
-        require(amount <= 500, "freeze fee must be less than 5%");
-        require(amount >= leverageFeeBps, "freeze fee must be greater than leverage fee");
-        freezeFeeBps = amount;
-        emit FreezeFeeUpdated(amount);
+    function setHydrateFee(uint256 amount) external onlyOwner {
+        require(amount >= 100, "hydrate fee must be greater than 1%");
+        require(amount <= 500, "hydrate fee must be less than 5%");
+        require(amount >= leverageFeeBps, "hydrate fee must be greater than leverage fee");
+        hydrateFeeBps = amount;
+        emit HydrateFeeUpdated(amount);
     }
 
     /// @notice Sets the leverage fee
@@ -208,7 +181,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function setLeverageFee(uint256 amount) external onlyOwner {
         require(amount >= 50, "leverage fee must be greater than 0.5%");
         require(amount <= 250, "leverage fee must be less than 2.5%");
-        require(amount <= freezeFeeBps, "leverage fee must be less than freeze fee");
+        require(amount <= hydrateFeeBps, "leverage fee must be less than hydrate fee");
         leverageFeeBps = amount;
         emit LeverageFeeUpdated(amount);
     }
@@ -230,104 +203,103 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         emit BorrowingEnabled(_enabled);
     }
 
-    /// @notice Recover ERC20 tokens from the contract after snow is freezed
+    /// @notice Recover ERC20 tokens from the contract after H2O is hydrated
     /// @param _token Address of the token to recover
-    /// @dev Unruggable because it can only recover erc20s that are not snow (mistakenly donated or farmed tokens)
+    /// @dev Unruggable because it can only recover erc20s that are not H2O (mistakenly donated or farmed tokens)
     function recoverERC20(address _token) external onlyOwner {
-        require(_token != address(this), "Snow: can only recover erc20s that are not snow");
+        require(_token != address(this), "Hydrate: can only recover erc20s that are not ");
         _token.safeTransfer(msg.sender, _token.balanceOf(address(this)));
     }
 
     //***************************************************
     //  External functions
 
-    function freezeKHYPE(address receiver, uint256 amount) external nonReentrant {
+    function hydrateKHYPE(address receiver, uint256 amount) external nonReentrant {
         KHYPE.transferFrom(msg.sender, address(this), amount);
-        _freezeSnow(receiver, amount);
+        _hydrateH2O(receiver, amount);
     }
 
-    /// @notice Buys SNOW tokens with AVAX
-    /// @param receiver The address to receive the SNOW tokens
+    /// @notice Buys H2O tokens with HYPE
+    /// @param receiver The address to receive the H2O tokens
     /// @dev Requires trading to be started
-    /// Mints SNOW to the receiver based on the current price
-    function freeze(address receiver) external payable nonReentrant {
+    /// Mints H2O to the receiver based on the current price
+    function hydrate(address receiver) external payable nonReentrant {
         uint256 amount = msg.value;
         stakeHub.stake{value: amount}();
-        _freezeSnow(receiver, amount);
+        _hydrateH2O(receiver, amount);
     }
 
-    function _freezeSnow(address receiver, uint256 amount) internal {
+    function _hydrateH2O(address receiver, uint256 amount) internal {
         liquidate();
         require(started, "Trading must be initialized");
 
         require(receiver != address(0), "Receiver cannot be 0 address");
 
-        // Calculate amount of snow to recieve
-        uint256 snow = AVAXtoSNOWFloor(amount);
-        uint256 snowToFreeze = (snow * (BPS_DENOMINATOR - freezeFeeBps)) / BPS_DENOMINATOR;
+        // Calculate amount of H2O to recieve
+        uint256 H2O = KHYPEtoH2OFloor(amount);
+        uint256 H2OToHydrate = (H2O * (BPS_DENOMINATOR - hydrateFeeBps)) / BPS_DENOMINATOR;
 
-        if (msg.sender == freezer) {
+        if (msg.sender == hydrater) {
             // check if we need to increase max supply
-            if (totalFreezed + snowToFreeze > maxFreeze) {
-                uint256 _maxFreeze = maxFreeze + snowToFreeze;
-                maxFreeze = _maxFreeze;
-                emit MaxFreezeUpdated(_maxFreeze);
+            if (totalHydrated + H2OToHydrate > maxHydrate) {
+                uint256 _maxHydrate = maxHydrate + H2OToHydrate;
+                maxHydrate = _maxHydrate;
+                emit MaxHydrateUpdated(_maxHydrate);
             }
         }
 
-        // Mint SNOW to receiver
-        _freeze(receiver, snowToFreeze);
+        // Mint H2O to receiver
+        _hydrate(receiver, H2OToHydrate);
 
         // Calculate Treasury Fee and deduct
-        uint256 treasuryAmount = (amount * freezeFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
+        uint256 treasuryAmount = (amount * hydrateFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
-        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryAmount);
 
         _riseOnly(amount);
-        emit Freeze(receiver, amount, snowToFreeze);
+        emit Hydrated(receiver, amount, H2OToHydrate);
     }
 
-    /// @notice Sells SNOW tokens for AVAX
-    /// @param snow The amount of SNOW to sell
-    /// @dev Burns SNOW and sends AVAX to the sender based on the current price
-    function burn(uint256 snow) external nonReentrant {
+    /// @notice Sells H2O tokens for KHYPE
+    /// @param h2o The amount of H2O to sell
+    /// @dev Burns H2O and sends KHYPE to the sender based on the current price
+    function burn(uint256 h2o) external nonReentrant {
         liquidate();
 
-        // Total Avax to be sent
-        uint256 avax = SNOWtoAVAXFloor(snow); //Rounds down user amount (in favor of protocol)
+        // Total KHYPE to be sent
+        uint256 khype = H2OtoKHYPEFloor(h2o); //Rounds down user amount (in favor of protocol)
 
-        // Burn of Snow
-        _burn(msg.sender, snow);
+        // Burn 
+        _burn(msg.sender, h2o);
 
         // Payment to sender
-        uint256 avaxToPay = (avax * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
-        KHYPE.safeTransfer(msg.sender, avaxToPay);
+        uint256 khypeToPay = (khype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+        KHYPE.safeTransfer(msg.sender, khypeToPay);
 
         // Treasury fee
-        uint256 treasuryAmount = (avax * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
+        uint256 treasuryAmount = (khype * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
-        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryAmount);
 
-        _riseOnly(avax);
-        emit Burn(msg.sender, avaxToPay, snow);
+        _riseOnly(khype);
+        emit Burn(msg.sender, khypeToPay, h2o);
     }
 
     // TODO: natspec
-    // redeem function that unwraps backing KHYPE to HYPE
-    function burnHype(uint256 snow) external nonReentrant {
+    function burnHype(uint256 h2o) external nonReentrant {
         liquidate();
 
         // Total Hype to be sent
-        uint256 hype = SNOWtoAVAXFloor(snow);
+        uint256 hype = H2OtoKHYPEFloor(h2o);
 
-        // Burn SNOW
-        _burn(msg.sender, snow);
+        // Burn H2O
+        _burn(msg.sender, h2o);
 
         // Handle fees before swapping
         // Treasury fee
         uint256 treasuryAmount = (hype * burnFeeBps * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "must trade over min");
-        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryAmount);
 
         // Amount Hype the user will recieve
         uint256 hypeToSwap = (hype * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
@@ -355,16 +327,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         swapRouter.exactInputSingle(swapParams);
 
         _riseOnly(hype);
-        emit Burn(msg.sender, hypeToSwap, snow);
+        emit Burn(msg.sender, hypeToSwap, h2o);
     }
 
-    // TODO: Accept $HYPE as well?
     /// @notice Creates a leveraged position
-    /// @param avax The amount of AVAX to loop
+    /// @param khype The amount of khype to loop
     /// @param numberOfDays The duration of the loan in days
     /// @dev Requires trading to be started
     ///     Creates a loan with collateral and borrowed amount
-    function loop(uint256 avax, uint256 numberOfDays) public nonReentrant {
+    function loop(uint256 khype, uint256 numberOfDays) public nonReentrant {
         require(started, "Trading must be initialized");
         require(borrowingEnabled, "Borrowing is disabled");
         require(numberOfDays < 366, "Max borrow/extension must be 365 days or less");
@@ -380,48 +351,42 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         liquidate();
         uint256 endDate = getDayStart((numberOfDays * 1 days) + block.timestamp);
 
-        (uint256 freezeFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interestFee) =
-            loopCalcs(avax, numberOfDays);
+        (uint256 hydrateFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interestFee) =
+            loopCalcs(khype, numberOfDays);
 
-        uint256 totalAvaxRequired = overCollateralizationAmount + freezeFee + interestFee;
-        KHYPE.safeTransferFrom(msg.sender, address(this), totalAvaxRequired);
-        // uint256 feeOverage;
-        // if (msg.value > totalAvaxRequired) {
-        //     feeOverage = msg.value - totalAvaxRequired;
-        //     _sendAvax(msg.sender, feeOverage);
-        // }
-        // require(msg.value - feeOverage == totalAvaxRequired, "Insufficient avax fee sent");
+        uint256 totalKHYPERequired = overCollateralizationAmount + hydrateFee + interestFee;
+        KHYPE.safeTransferFrom(msg.sender, address(this), totalKHYPERequired);
 
-        uint256 userAvax = avax - freezeFee;
-        uint256 userSnow = AVAXtoSNOWLev(userAvax, totalAvaxRequired);
-        _freeze(address(this), userSnow);
+        uint256 userKHYPE = khype - hydrateFee;
+        uint256 userH2O = KHYPEtoH2OLev(userKHYPE, totalKHYPERequired);
+        _hydrate(address(this), userH2O);
 
-        uint256 treasuryAmount = ((freezeFee + interestFee) * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
+        uint256 treasuryAmount = ((hydrateFee + interestFee) * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
         require(treasuryAmount > DUST, "Fees must be higher than dust");
-        KHYPE.safeTransfer(snowTreasury, treasuryAmount);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryAmount);
 
-        _addLoansOnDate(userBorrow, userSnow, endDate);
+        _addLoansOnDate(userBorrow, userH2O, endDate);
         activeLoans[msg.sender] = Loan({
-            collateral: userSnow,
+            collateral: userH2O,
             borrowed: userBorrow,
             endDate: endDate,
             numberOfDays: numberOfDays,
             lastTimeCreated: block.timestamp
         });
 
-        _riseOnly(avax);
-        emit Loop(msg.sender, avax, numberOfDays, userSnow, userBorrow, totalAvaxRequired);
+        _riseOnly(khype);
+        emit Loop(msg.sender, khype, numberOfDays, userKHYPE, userBorrow, totalKHYPERequired);
     }
 
-    /// @notice Creates a loan by borrowing AVAX against SNOW collateral
-    /// @param avax The amount of AVAX to borrow
+    /// @notice Creates a loan by borrowing KHYPE against H2O collateral
+    /// @param khype The amount of KHYPE to borrow
     /// @param numberOfDays The duration of the loan in days
     /// @dev Requires no existing loan
     /// @dev Use increaseBorrow with existing loan
-    function borrow(uint256 avax, uint256 numberOfDays) public nonReentrant {
+    function borrow(uint256 khype, uint256 numberOfDays) public nonReentrant {
         require(borrowingEnabled, "Borrowing is disabled");
         require(numberOfDays <= 365, "Max borrow/extension must be 365 days or less");
-        require(avax != 0, "Must borrow more than 0");
+        require(khype != 0, "Must borrow more than 0");
         if (isLoanExpired(msg.sender)) {
             delete activeLoans[msg.sender];
         }
@@ -430,41 +395,41 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         liquidate();
         uint256 endDate = getDayStart((numberOfDays * 1 days) + block.timestamp);
 
-        uint256 newUserBorrow = (avax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
+        uint256 newUserBorrow = (khype * COLLATERAL_RATIO) / BPS_DENOMINATOR;
 
-        uint256 avaxFee = getInterestFee(newUserBorrow, numberOfDays);
+        uint256 khypeFee = getInterestFee(newUserBorrow, numberOfDays);
 
-        uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
+        uint256 treasuryFee = (khypeFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
 
-        uint256 userSnow = AVAXtoSNOWNoTradeCeil(avax); //Rounds up borrow amount (in favor of protocol)
+        uint256 userH2O = KHYPEtoH2OLev(khype, khypeFee); //Rounds up borrow amount (in favor of protocol)
 
         activeLoans[msg.sender] = Loan({
-            collateral: userSnow,
+            collateral: userH2O,
             borrowed: newUserBorrow,
             endDate: endDate,
             numberOfDays: numberOfDays,
             lastTimeCreated: block.timestamp
         });
 
-        _transfer(msg.sender, address(this), userSnow);
+        _transfer(msg.sender, address(this), userH2O);
         require(treasuryFee > DUST, "Fees must be higher than dust");
 
-        KHYPE.safeTransfer(msg.sender, newUserBorrow - avaxFee);
-        KHYPE.safeTransfer(snowTreasury, treasuryFee);
+        KHYPE.safeTransfer(msg.sender, newUserBorrow - khypeFee);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryFee);
 
-        _addLoansOnDate(newUserBorrow, userSnow, endDate);
+        _addLoansOnDate(newUserBorrow, userH2O, endDate);
 
-        _riseOnly(avaxFee);
-        emit Borrow(msg.sender, avax, numberOfDays, userSnow, newUserBorrow, avaxFee);
+        _riseOnly(khype);
+        emit Borrow(msg.sender, khype, numberOfDays, userH2O, newUserBorrow, khypeFee);
     }
 
-    /// @notice Increases an existing loan by borrowing more AVAX
-    /// @param avax The additional amount of AVAX to borrow
+    /// @notice Increases an existing loan by borrowing more KHYPE 
+    /// @param khype The additional amount of KHYPE to borrow
     /// @dev Requires an active non-expired loan
-    function increaseBorrow(uint256 avax) public nonReentrant {
+    function increaseBorrow(uint256 khype) public nonReentrant {
         require(borrowingEnabled, "Borrowing is disabled");
         require(!isLoanExpired(msg.sender), "Loan expired use borrow");
-        require(avax != 0, "Must borrow more than 0");
+        require(khype != 0, "Must borrow more than 0");
         liquidate();
         uint256 userBorrowed = activeLoans[msg.sender].borrowed;
         uint256 userCollateral = activeLoans[msg.sender].collateral;
@@ -473,15 +438,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 todayMidnight = getDayStart(block.timestamp);
         uint256 newBorrowLength = (userEndDate - todayMidnight) / 1 days;
 
-        uint256 newUserBorrow = (avax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
-        uint256 avaxFee = getInterestFee(newUserBorrow, newBorrowLength);
+        uint256 newUserBorrow = (khype * COLLATERAL_RATIO) / BPS_DENOMINATOR;
+        uint256 khypeFee = getInterestFee(newUserBorrow, newBorrowLength);
 
-        uint256 userBorrowedInSnow = AVAXtoSNOWNoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
-        uint256 userExcessInSnow =
-            userCollateral - Math.mulDiv(userBorrowedInSnow, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
+        uint256 userBorrowedInH2O = KHYPEtoH2ONoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
+        uint256 userExcessInH2O =
+            userCollateral - Math.mulDiv(userBorrowedInH2O, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
 
-        uint256 userSnow = AVAXtoSNOWNoTradeCeil(avax); //Rounds up borrow amount (in favor of protocol)
-        uint256 requireCollateralFromUser = userExcessInSnow >= userSnow ? 0 : userSnow - userExcessInSnow;
+        uint256 userH2O = KHYPEtoH2ONoTradeCeil(khype); //Rounds up borrow amount (in favor of protocol)
+        uint256 requireCollateralFromUser = userExcessInH2O >= userH2O ? 0 : userH2O - userExcessInH2O;
 
         {
             uint256 newUserBorrowTotal = userBorrowed + newUserBorrow;
@@ -500,29 +465,29 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         }
 
         {
-            uint256 treasuryFee = (avaxFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
+            uint256 treasuryFee = (khypeFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
             require(treasuryFee > DUST, "Fees must be higher than dust");
-            KHYPE.safeTransfer(snowTreasury, treasuryFee);
+            KHYPE.safeTransfer(hydrateTreasury, treasuryFee);
         }
 
-        KHYPE.safeTransfer(msg.sender, newUserBorrow - avaxFee);
+        KHYPE.safeTransfer(msg.sender, newUserBorrow - khypeFee);
         _addLoansOnDate(newUserBorrow, requireCollateralFromUser, userEndDate);
 
-        _riseOnly(avaxFee);
-        emit Borrow(msg.sender, avax, newBorrowLength, userSnow, newUserBorrow, avaxFee);
+        _riseOnly(khype);
+        emit Borrow(msg.sender, khype, newBorrowLength, userH2O, newUserBorrow, khypeFee);
     }
 
     /// @notice Removes collateral from an active loan
-    /// @param amount The amount of SNOW collateral to remove
+    /// @param amount The amount of H2O collateral to remove
     /// @dev Requires an active non-expired loan and maintains collateralization ratio
     function removeCollateral(uint256 amount) public nonReentrant {
         require(!isLoanExpired(msg.sender), "No active loans");
         liquidate();
         uint256 collateral = activeLoans[msg.sender].collateral;
-        uint256 remainingCollateralInAvax = SNOWtoAVAXFloor(collateral - amount); //Rounds down user amount (in favor of protocol)
+        uint256 remainingCollateralInKHYPE = H2OtoKHYPEFloor(collateral - amount); //Rounds down user amount (in favor of protocol)
 
         require(
-            activeLoans[msg.sender].borrowed <= (remainingCollateralInAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR,
+            activeLoans[msg.sender].borrowed <= (remainingCollateralInKHYPE * COLLATERAL_RATIO) / BPS_DENOMINATOR,
             "Require 99% collateralization rate"
         );
         activeLoans[msg.sender].collateral = activeLoans[msg.sender].collateral - amount;
@@ -572,7 +537,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         emit Repay(msg.sender, amount, 0);
     }
 
-    /// @notice Allows users to close their loan positions by using their SNOW collateral directly
+    /// @notice Allows users to close their loan positions by using their H2O collateral directly
     /// @dev Requires an active non-expired loan with sufficient collateral value
     function flashBurn() public nonReentrant {
         require(!isLoanExpired(msg.sender), "No active loan");
@@ -580,42 +545,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 borrowed = activeLoans[msg.sender].borrowed;
         uint256 collateral = activeLoans[msg.sender].collateral;
 
-        uint256 collateralInAvax = SNOWtoAVAXFloor(collateral); //Rounds down user amount (in favor of protocol)
+        uint256 collateralInKHYPE = H2OtoKHYPEFloor(collateral); //Rounds down user amount (in favor of protocol)
         _burn(address(this), collateral);
 
-        uint256 burnFee = (collateralInAvax * burnFeeBps) / BPS_DENOMINATOR;
-        uint256 collateralInAvaxAfterFee = collateralInAvax - burnFee;
+        uint256 burnFee = (collateralInKHYPE * burnFeeBps) / BPS_DENOMINATOR;
+        uint256 collateralInKHYPEAfterFee = collateralInKHYPE - burnFee;
 
-        require(collateralInAvaxAfterFee >= borrowed, "Not enough collateral to close position"); //This seems redundant, but fine to keep
+        require(collateralInKHYPEAfterFee >= borrowed, "Not enough collateral to close position"); //This seems redundant, but fine to keep
 
-        // Explanation of how it works:
-
-        // Assume SNOW/AVAX = 1.10
-        // I own 90.90 SNOW = 100 AVAX worth of SNOW
-        // I max borrow against it for 1 year
-        // Max borrow possible is 99 AVAX
-        // Interest fee = 99 * 6.9% APR
-        // Thus, borrow amount = 99 AVAX and avax received = 92.169 AVAX
-        // Collateral = 100 AVAX (worth of) SNOW = 90.90 SNOW
-
-        // Let's say SNOW/AVAX rises to 1.20, and now I want to close my position
-
-        // Option 1: close the loan normally.
-        // I flash borrow (elsewhere, assume for 0 cost) and pay back 99 AVAX
-        // I receive 90.90 SNOW
-        // I burn the SNOW for 90.90 * 1.20 = 109.08 AVAX - 2.69% burn fee
-        // I receive 106.145 AVAX and pay back by flash borrow, I netted 106.145 - 99 AVAX = 7.145 AVAX
-
-        // Option 2: I call flashBurn()
-        // My entire SNOW collateral (90.90 SNOW) is burned
-        // My collateral was worth 90.90 * 120 = 109.08 AVAX
-        // The fee is 109.08 * burnFee = 109.08 * 2.69% = 2.93 AVAX
-        // Remaining collateral in AVAX after fee = 109.08 - 2.934 = 106.145 AVAX
-        // 106.145 AVAX must be worth more than the borrowed amount (99 AVAX) -> which it is
-        // I get back collateral value - borrowed - fee = 106.145 AVAX - 99 AVAX = 7.145 AVAX
-        // Note this is the exact same outcome as Option 1
-
-        uint256 toUser = collateralInAvaxAfterFee - borrowed;
+        uint256 toUser = collateralInKHYPEAfterFee - borrowed;
         uint256 treasuryFee = (burnFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
 
         if (toUser > 0) {
@@ -623,7 +561,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         }
 
         require(treasuryFee > DUST, "Fees must be higher than dust");
-        KHYPE.safeTransfer(snowTreasury, treasuryFee);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryFee);
         _subtractLoansOnDate(borrowed, collateral, activeLoans[msg.sender].endDate);
 
         delete activeLoans[msg.sender];
@@ -652,7 +590,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 treasuryFee = (loanFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
         require(treasuryFee > DUST, "Fees must be higher than dust");
         liquidate();
-        KHYPE.safeTransfer(snowTreasury, treasuryFee);
+        KHYPE.safeTransfer(hydrateTreasury, treasuryFee);
 
         _subtractLoansOnDate(borrowed, collateral, oldEndDate);
         _addLoansOnDate(borrowed, collateral, newEndDate);
@@ -692,15 +630,15 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     //***************************************************
     //  Internal functions
 
-    /// @notice Mints SNOW tokens to a specified address
+    /// @notice Mints H2O tokens to a specified address
     /// @param to Address to receive the minted tokens
     /// @param value Amount of tokens to mint
     /// @dev Updates totalMinted, enforces max supply, and prevents minting to zero address
-    function _freeze(address to, uint256 value) private {
+    function _hydrate(address to, uint256 value) private {
         require(to != address(0), "Can't mint to 0 address");
-        totalFreezed = totalFreezed + value;
+        totalHydrated = totalHydrated + value;
 
-        require(totalFreezed <= maxFreeze, "NO MORE SNOW");
+        require(totalHydrated <= maxHydrate, "NO MORE H2O");
 
         _mint(to, value);
     }
@@ -732,28 +670,18 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     }
 
     /// @notice Performs safety checks after operations that affect the protocol's state
-    /// @param avax Amount of AVAX involved in the operation
+    /// @param khype Amount of KHYPE involved in the operation
     /// @dev Ensures contract balance covers all collateral, price only increases, and emits Price event
-    function _riseOnly(uint256 avax) private {
+    function _riseOnly(uint256 khype) private {
         uint256 newPrice = (getBacking() * 1 ether) / totalSupply();
         uint256 _totalCollateral = balanceOf(address(this));
         require(
             _totalCollateral >= totalCollateral,
-            "The snow balance of the contract must be greater than or equal to the collateral"
+            "The H2O balance of the contract must be greater than or equal to the collateral"
         );
-        require(prevPrice <= newPrice, "The price of snow cannot decrease");
+        require(prevPrice <= newPrice, "The price of H2O cannot decrease");
         prevPrice = newPrice;
-        emit PriceUpdated(block.timestamp, newPrice, avax);
-    }
-
-    /// @notice Sends AVAX to a specified address
-    /// @param _address Recipient address
-    /// @param _value Amount of AVAX to send
-    /// @dev Emits SendAvax event on successful transfer
-    function _sendAvax(address _address, uint256 _value) internal {
-        require(_address != address(0), "Can't send to 0 address");
-        _address.safeTransferETH(_value);
-        emit SendAvax(_address, _value);
+        emit PriceUpdated(block.timestamp, newPrice, khype);
     }
 
     //***************************************************
@@ -787,17 +715,17 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     }
 
     /// @notice Calculates the leverage fee for a loan
-    /// @param avax Amount of AVAX to borrow
+    /// @param khype Amount of KHYPE to borrow
     /// @param numberOfDays Duration of the loan in days
-    function loopCalcs(uint256 avax, uint256 numberOfDays)
+    function loopCalcs(uint256 khype, uint256 numberOfDays)
         public
         view
-        returns (uint256 freezeFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interest)
+        returns (uint256 hydrateFee, uint256 userBorrow, uint256 overCollateralizationAmount, uint256 interest)
     {
-        freezeFee = (avax * leverageFeeBps) / BPS_DENOMINATOR;
-        uint256 userAvax = avax - freezeFee;
-        userBorrow = (userAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
-        overCollateralizationAmount = userAvax - userBorrow;
+        hydrateFee = (khype * leverageFeeBps) / BPS_DENOMINATOR;
+        uint256 userKHYPE = khype - hydrateFee;
+        userBorrow = (userKHYPE * COLLATERAL_RATIO) / BPS_DENOMINATOR;
+        overCollateralizationAmount = userKHYPE - userBorrow;
         interest = getInterestFee(userBorrow, numberOfDays);
     }
 
@@ -810,13 +738,6 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 overCollateralizationAmount = (borrowed * (BPS_DENOMINATOR - COLLATERAL_RATIO)) / COLLATERAL_RATIO;
         uint256 burnFee = ((borrowed + overCollateralizationAmount) * burnFeeBps) / BPS_DENOMINATOR;
 
-        // Assume you have 100 AVAX worth of SNOW
-        // Borrow 99 AVAX
-        // If I sold my SNOW, I would get 100 AVAX - 2.69% burn fee = 97.31 AVAX
-        // If I borrow AVAX against that same SNOW, I should receive no more than 97.31 AVAX
-        // If I borrow 99 AVAX, that means there is 1 AVAX overCollateralizationAmount
-        // Interest Fee should be at least (99 - 97.31) = 1.69 AVAX
-        // Ensure that borrowing + letting yourself get liquidated isn't cheaper than burning
         if (burnFee <= overCollateralizationAmount) {
             return interestFee;
         } else if (interestFee >= burnFee - overCollateralizationAmount) {
@@ -839,44 +760,44 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         return KHYPE.balanceOf(address(this)) + totalLoans;
     }
 
-    /// @notice Converts SNOW tokens to AVAX
+    /// @notice Converts H2O tokens to KHYPE
     /// @dev Round down user amount (in favor of protocol)
-    /// @param value Amount of SNOW to convert
-    /// @return Equivalent amount in AVAX
-    function SNOWtoAVAXFloor(uint256 value) public view returns (uint256) {
+    /// @param value Amount of H2O to convert
+    /// @return Equivalent amount in KHYPE 
+    function H2OtoKHYPEFloor(uint256 value) public view returns (uint256) {
         return Math.mulDiv(value, getBacking(), totalSupply(), Math.Rounding.Floor);
     }
 
-    /// @notice Converts AVAX to SNOW tokens, To be used when Avax is already received from the user.
+    /// @notice Converts KHYPE to H2O tokens, To be used when KHYPE is already received from the user.
     /// @dev Rounds down user amount (in  favor of protocol).
-    /// @param value Amount of AVAX to convert
-    /// @return Equivalent amount in SNOW
-    function AVAXtoSNOWFloor(uint256 value) public view returns (uint256) {
+    /// @param value Amount of KHYPE to convert
+    /// @return Equivalent amount in H2O
+    function KHYPEtoH2OFloor(uint256 value) public view returns (uint256) {
         return Math.mulDiv(value, totalSupply(), getBacking() - value, Math.Rounding.Floor);
     }
 
-    /// @notice Converts AVAX to SNOW tokens with leverage fee consideration.
+    /// @notice Converts KHYPE to H2O tokens with leverage fee consideration.
     /// @dev Rounds down user amount (in favor of protocol).
-    /// @param value Amount of AVAX to convert
-    /// @param totalAvaxRequired Net fee + overcollaterization amount received from the user
-    /// @return Equivalent amount in SNOW
-    function AVAXtoSNOWLev(uint256 value, uint256 totalAvaxRequired) public view returns (uint256) {
-        uint256 backing = getBacking() - totalAvaxRequired;
+    /// @param value Amount of KHYPE to convert
+    /// @param totalKHYPERequired Net fee + overcollaterization amount received from the user
+    /// @return Equivalent amount in H2O
+    function KHYPEtoH2OLev(uint256 value, uint256 totalKHYPERequired) public view returns (uint256) {
+        uint256 backing = getBacking() - totalKHYPERequired;
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Floor);
     }
 
-    /// @notice Converts AVAX to SNOW without receiving AVAX, Rounds up.
-    /// @param value Amount of AVAX to convert
-    /// @return Equivalent amount in SNOW (rounded up)
-    function AVAXtoSNOWNoTradeCeil(uint256 value) public view returns (uint256) {
+    /// @notice Converts KHYPE to H2O tokens without receiving KHYPE, Rounds up.
+    /// @param value Amount of KHYPE to convert
+    /// @return Equivalent amount in H2O (rounded up)
+    function KHYPEtoH2ONoTradeCeil(uint256 value) public view returns (uint256) {
         uint256 backing = getBacking();
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Ceil);
     }
 
-    /// @notice Converts AVAX to SNOW without receiving AVAX. Rounds down.
-    /// @param value Amount of AVAX to convert
-    /// @return Equivalent amount in SNOW
-    function AVAXtoSNOWNoTradeFloor(uint256 value) public view returns (uint256) {
+    /// @notice Converts KHYPE to H2O tokens without receiving KHYPE. Rounds down.
+    /// @param value Amount of KHYPE to convert
+    /// @return Equivalent amount in H2O
+    function KHYPEtoH2ONoTradeFloor(uint256 value) public view returns (uint256) {
         uint256 backing = getBacking();
         return Math.mulDiv(value, totalSupply(), backing, Math.Rounding.Floor);
     }
@@ -890,57 +811,57 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     function getMaxBorrow(address _user, uint256 _numberOfDays)
         external
         view
-        returns (uint256 userAvax, uint256 userBorrow, uint256 interestFee)
+        returns (uint256 userKHYPE, uint256 userBorrow, uint256 interestFee)
     {
-        uint256 userSnowBalance = balanceOf(_user) + getFreeCollateral(_user);
-        userAvax = SNOWtoAVAXFloor(userSnowBalance);
-        userBorrow = (userAvax * COLLATERAL_RATIO) / BPS_DENOMINATOR;
+        uint256 userH2OBalance = balanceOf(_user) + getFreeCollateral(_user);
+        userKHYPE = H2OtoKHYPEFloor(userH2OBalance);
+        userBorrow = (userKHYPE * COLLATERAL_RATIO) / BPS_DENOMINATOR;
         interestFee = getInterestFee(userBorrow, _numberOfDays);
     }
 
     /// @notice Return the free collateral for a user that can be withdrawn via removeCollateral()
     /// @param user The address of the user
-    /// @return The amount of free collateral in SNOW
+    /// @return The amount of free collateral in H2O 
     function getFreeCollateral(address user) public view returns (uint256) {
         if (isLoanExpired(user)) {
             return 0;
-        }
+        }           
         uint256 userCollateral = activeLoans[user].collateral;
         uint256 userBorrowed = activeLoans[user].borrowed;
 
         // Note this is the same calculation as in increaseBorrow
-        uint256 userBorrowedInSnow = AVAXtoSNOWNoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
-        return userCollateral - Math.mulDiv(userBorrowedInSnow, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
+        uint256 userBorrowedInH2O = KHYPEtoH2ONoTradeCeil(userBorrowed); //Rounds up borrow amount (in favor of protocol)
+        return userCollateral - Math.mulDiv(userBorrowedInH2O, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
     }
 
-    /// @notice Calculates the amount of SNOW you get by buying with AVAX
-    /// @param avaxAmount Amount of AVAX to spend
-    /// @return Amount of SNOW user would receive
-    function getAmountOutBuy(uint256 avaxAmount) external view returns (uint256) {
-        uint256 snowAmount = AVAXtoSNOWNoTradeFloor(avaxAmount);
-        return (snowAmount * (BPS_DENOMINATOR - freezeFeeBps)) / BPS_DENOMINATOR;
+    /// @notice Calculates the amount of H2O you get by buying with KHYPE 
+    /// @param khypeAmount Amount of KHYPE to spend
+    /// @return Amount of H2O user would receive
+    function getAmountOutBuy(uint256 khypeAmount) external view returns (uint256) {
+        uint256 h2oAmount = KHYPEtoH2ONoTradeFloor(khypeAmount);
+        return (h2oAmount * (BPS_DENOMINATOR - hydrateFeeBps)) / BPS_DENOMINATOR;
     }
 
-    /// @notice Calculates the amount of AVAX you get by selling SNOW
-    /// @param snowAmount Amount of SNOW to sell
-    /// @return Amount of AVAX user would receive
-    function getAmountOutSell(uint256 snowAmount) external view returns (uint256) {
-        uint256 avaxAmount = SNOWtoAVAXFloor(snowAmount);
-        return (avaxAmount * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
+    /// @notice Calculates the amount of KHYPE you get by selling H2O
+    /// @param h2oAmount Amount of H2O to sell
+    /// @return Amount of KHYPE user would receive
+    function getAmountOutSell(uint256 h2oAmount) external view returns (uint256) {
+        uint256 khypeAmount = H2OtoKHYPEFloor(h2oAmount);
+        return (khypeAmount * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
     }
 
-    /// @notice Calculates the input Avax to call in loopCalcs given the totalAvaxRequired
-    /// @param totalAvaxRequired = freezeFee + interest + overcollateralizationAmount
+    /// @notice Calculates the input KHYPE to call in loopCalcs given the totalKHYPERequired 
+    /// @param totalKHYPERequired = hydrateFee + interest + overcollateralizationAmount
     /// @param numberOfDays Duration of the loan in days
-    function inverseLoopCalc(uint256 totalAvaxRequired, uint256 numberOfDays) public view returns (uint256 avax) {
-        uint256 low = totalAvaxRequired * 5; //initial guess (5x - 100x leverage, it should always be within these bounds)
-        uint256 high = totalAvaxRequired * 100;
+    function inverseLoopCalc(uint256 totalKHYPERequired, uint256 numberOfDays) public view returns (uint256 khype) {
+        uint256 low = totalKHYPERequired * 5; //initial guess (5x - 100x leverage, it should always be within these bounds)
+        uint256 high = totalKHYPERequired * 100;
         uint256 mid;
         while (low < high) {
             mid = (low + high + 1) / 2; // Bias towards upper range to avoid infinite loops
-            (uint256 freezeFee,, uint256 overCollateralizationAmount, uint256 interest) = loopCalcs(mid, numberOfDays);
-            uint256 calculatedTotal = interest + overCollateralizationAmount + freezeFee;
-            if (calculatedTotal < totalAvaxRequired) {
+            (uint256 hydrateFee,, uint256 overCollateralizationAmount, uint256 interest) = loopCalcs(mid, numberOfDays);
+            uint256 calculatedTotal = interest + overCollateralizationAmount + hydrateFee;
+            if (calculatedTotal < totalKHYPERequired) {
                 low = mid; // Move upwards
             } else {
                 high = mid - 1; // Move downwards
@@ -950,50 +871,50 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     }
 
     //***************************************************
-    /// @notice Fallback function to receive AVAX
+    /// @notice Fallback function to receive KHYPE
     receive() external payable {}
 
     //***************************************************
     //  Events
 
-    /// @notice Emitted when the price of SNOW changes
+    /// @notice Emitted when the price of H2O changes
     /// @param time Timestamp of the price change
-    /// @param price New price of SNOW in AVAX
-    /// @param volumeInAvax Volume of the transaction in AVAX
-    event PriceUpdated(uint256 time, uint256 price, uint256 volumeInAvax);
+    /// @param price New price of H2O in KHYPE
+    /// @param volumeInKHYPE Volume of the transaction in KHYPE
+    event PriceUpdated(uint256 time, uint256 price, uint256 volumeInKHYPE);
 
-    /// @notice Emitted when a user freezes SNOW
+    /// @notice Emitted when a user hydrates H2O
     /// @param receiver Address of the buyer
-    /// @param amount Amount of AVAX spent
-    /// @param snow Amount of SNOW received
-    event Freeze(address indexed receiver, uint256 amount, uint256 snow);
+    /// @param amount Amount of KHYPE spent
+    /// @param h2o Amount of H2O received
+    event Hydrated(address indexed receiver, uint256 amount, uint256 h2o);
 
-    /// @notice Emitted when a user burns SNOW
+    /// @notice Emitted when a user burns H2O
     /// @param seller Address of the seller
-    /// @param avax Amount of AVAX received
-    /// @param snow Amount of SNOW sold
-    event Burn(address indexed seller, uint256 avax, uint256 snow);
+    /// @param avax Amount of KHYPE received
+    /// @param h2o Amount of H2O sold
+    event Burn(address indexed seller, uint256 avax, uint256 h2o);
 
-    /// @notice Emitted when a user takes a leveraged position in SNOW
+    /// @notice Emitted when a user takes a leveraged position in H2O
     /// @param user Address of the user
-    /// @param avax Amount of AVAX used for leverage
+    /// @param avax Amount of KHYPE used for leverage
     /// @param numberOfDays Duration of leverage in days
-    /// @param userSnow Amount of SNOW held by the user before leverage
-    /// @param userBorrow Total borrowed AVAX after leverage
+    /// @param userH2O Amount of H2O held by the user before leverage
+    /// @param userBorrow Total borrowed KHYPE after leverage
     /// @param fee Fee charged for leverage
     event Loop(
-        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userSnow, uint256 userBorrow, uint256 fee
+        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userH2O, uint256 userBorrow, uint256 fee
     );
 
-    /// @notice Emitted when a user borrows AVAX against SNOW collateral
+    /// @notice Emitted when a user borrows KHYPE against H2O collateral
     /// @param user Address of the borrower
-    /// @param avax Amount of AVAX borrowed
+    /// @param avax Amount of KHYPE borrowed
     /// @param numberOfDays Duration of the loan in days
-    /// @param userSnow Amount of SNOW held as collateral
+    /// @param userH2O Amount of H2O held as collateral
     /// @param newUserBorrow Total outstanding debt after borrowing
     /// @param fee Fee charged for borrowing
     event Borrow(
-        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userSnow, uint256 newUserBorrow, uint256 fee
+        address indexed user, uint256 avax, uint256 numberOfDays, uint256 userH2O, uint256 newUserBorrow, uint256 fee
     );
 
     /// @notice Emitted when a user removes collateral
@@ -1003,14 +924,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Emitted when a user repays their loan
     /// @param user Address of the borrower
-    /// @param amount Amount of AVAX repaid
+    /// @param amount Amount of KHYPE repaid
     /// @param newBorrow Remaining outstanding debt after repayment
     event Repay(address indexed user, uint256 amount, uint256 newBorrow);
 
     /// @notice Emitted when a user closes a leveraged position using a flash loan
     /// @param user Address of the user
-    /// @param borrowed Amount of AVAX borrowed via flash loan
-    /// @param collateral Amount of SNOW collateral liquidated
+    /// @param borrowed Amount of KHYPE borrowed via flash loan
+    /// @param collateral Amount of H2O collateral liquidated
     /// @param toUser Amount returned to the user after closing position
     /// @param fee Fee charged for using the flash loan
     event FlashBurn(address indexed user, uint256 borrowed, uint256 collateral, uint256 toUser, uint256 fee);
@@ -1018,18 +939,18 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Emitted when a loan is extended
     /// @param user Address of the borrower
     /// @param numberOfDays Additional loan duration in days
-    /// @param collateral Amount of SNOW held as collateral
-    /// @param borrowed Amount of AVAX borrowed
+    /// @param collateral Amount of H2O held as collateral
+    /// @param borrowed Amount of KHYPE borrowed
     /// @param fee Fee charged for the extension
     event LoanExtended(address indexed user, uint256 numberOfDays, uint256 collateral, uint256 borrowed, uint256 fee);
 
     /// @notice Emitted when the max supply is updated
     /// @param max New maximum supply
-    event MaxFreezeUpdated(uint256 max);
+    event MaxHydrateUpdated(uint256 max);
 
-    /// @notice Emitted when freezer contract is updated
-    /// @param freezer New freezer address
-    event FreezerSet(address freezer);
+    /// @notice Emitted when hydrater contract is updated
+    /// @param hydrater New hydrater address
+    event HydraterSet(address hydrater);
 
     /// @notice Emitted when the sell fee is updated
     /// @param sellFee New sell fee
@@ -1037,11 +958,11 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Emitted when the fee address is updated
     /// @param _address New fee address
-    event SnowTreasuryUpdated(address _address);
+    event HydrateTreasuryUpdated(address _address);
 
-    /// @notice Emitted when the freeze fee is updated
-    /// @param freezeFee New freeze fee
-    event FreezeFeeUpdated(uint256 freezeFee);
+    /// @notice Emitted when the hydrate fee is updated
+    /// @param hydrateFee New hydrate fee
+    event HydrateFeeUpdated(uint256 hydrateFee);
 
     /// @notice Emitted when the leverage fee is updated
     /// @param leverageFee New leverage fee
@@ -1057,7 +978,7 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Emitted when loans are liquidateed
     /// @param time Timestamp of liquidate
-    /// @param amount Amount of AVAX liquidateed
+    /// @param amount Amount of KHYPE liquidateed
     event Liquidate(uint256 indexed time, uint256 amount);
 
     /// @notice Emitted when loan data is updated
@@ -1069,14 +990,14 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 collateralByDate, uint256 borrowedByDate, uint256 totalBorrowed, uint256 totalCollateral
     );
 
-    /// @notice Emitted when AVAX is sent
+    /// @notice Emitted when KHYPE is sent
     /// @param to Recipient address
-    /// @param amount Amount of AVAX sent
+    /// @param amount Amount of KHYPE sent
     event SendAvax(address to, uint256 amount);
 
     /// @notice Emitted when fees are collected
     /// @param sender Address of the sender
-    /// @param bounty Amount of AVAX paid as bounty
+    /// @param bounty Amount of KHYPE paid as bounty
     /// @param tokens List of ERC-20 tokens collected
     /// @param amounts Amounts of ERC-20 tokens collected
     event BountyCollected(address indexed sender, uint256 indexed bounty, address[] tokens, uint256[] amounts);
@@ -1102,47 +1023,5 @@ contract Snow is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param amount Amount of tokens unlocked
     event TokenUnlocked(address indexed sender, address indexed token, uint256 amount);
 
-    /// @notice Emitted when SNOW is staked for iSNOW
-    /// @param sender Address of the user
-    /// @param snowAmount Amount of SNOW to stake
-    /// @param iSnowAmount Amount of iSnow received
-    event Staked(address indexed sender, uint256 snowAmount, uint256 iSnowAmount);
 
-    /// @notice Emitted when iSnow is requested to be unstaked
-    /// @param user Address of the user
-    /// @param iSnowAmount Amount of iSnow to unstake
-    event UnstakeRequested(address indexed user, uint256 iSnowAmount);
-
-    /// @notice Emitted when iSnow is unstaked for SNOW
-    /// @param sender Address of the user
-    /// @param snowAmount Amount of SNOW received
-    /// @param iSnowAmount Amount of iSnow unstaked
-    event Unstaked(address indexed sender, uint256 snowAmount, uint256 iSnowAmount);
-
-    /// @notice Triggered when SNOW staking is enabled
-    /// @param enabled Whether staking is enabled
-    event StakingEnabled(bool enabled);
-
-    /// @notice Triggered when SnowGT is enabled
-    /// @param enabled Whether SnowGT is enabled
-    event SnowGTEnabled(bool enabled);
-
-    /// @notice Emitted when the POL fee is updated
-    /// @param polFee New POL fee
-    event PolFeeUpdated(uint256 polFee);
-
-    /// @notice Emitted when SnowGT is minted
-    /// @param user Address of the user
-    /// @param amount Amount of SnowGT minted
-    event SnowGTMinted(address indexed user, uint256 amount);
-    //
-    //    /// @notice Emitted when SnowGT is requested to be redeemed
-    //    /// @param user Address of the user
-    //    /// @param amount Amount of SnowGT redemption requested
-    //    event SnowGTRequested(address indexed user, uint256 amount);
-    //
-    //    /// @notice Emitted when SnowGT is redeemed
-    //    /// @param user Address of the user
-    //    /// @param amount Amount of SnowGT redeemed
-    //    event SnowGTFulfilled(address indexed user, uint256 amount, uint256 snowAmount);
 }
