@@ -105,6 +105,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         return "H2O";
     }
 
+
     // TODO: move me
     function _start(uint256 amount) internal {
         require(!started && maxHydrate == 0, "Trading already initialized");
@@ -128,7 +129,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
     }
 
     /// @notice Starts freezing and burning for the H2O token
-    /// @dev Requires that fee address is set and must send 6900 KHYPE
+    /// @dev Requires that fee address is set and must send 6900 KHYPE 
     /// @dev Requires that the maxSupply is 0 and trading hasn't already started
     /// Mints initial H2O to the owner and burns 0.1 H2O
     function setStart() public payable onlyOwner {
@@ -145,7 +146,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
     }
 
     /// @notice Increase the maxHydrate
-    /// @param _maxHydrate The new maximum supply of H2O
+    /// @param _maxHydrate The new maximum supply of H2O 
     /// @dev Requires its increasing and higher than total hydrated
     function increaseMaxSupply(uint256 _maxHydrate) external onlyOwner {
         require(_maxHydrate > totalHydrated, "Max supply must be greater than total hydrated");
@@ -268,7 +269,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         // Total KHYPE to be sent
         uint256 khype = H2OtoKHYPEFloor(h2o); //Rounds down user amount (in favor of protocol)
 
-        // Burn
+        // Burn 
         _burn(msg.sender, h2o);
 
         // Payment to sender
@@ -399,7 +400,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         uint256 khypeFee = getInterestFee(newUserBorrow, numberOfDays);
 
         uint256 treasuryFee = (khypeFee * PROTOCOL_FEE_SHARE_BPS) / BPS_DENOMINATOR;
-
+        
         uint256 userH2O = KHYPEtoH2ONoTradeCeil(khype); //Rounds up borrow amount (in favor of protocol)
 
         activeLoans[msg.sender] = Loan({
@@ -422,7 +423,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         emit Borrow(msg.sender, khype, numberOfDays, userH2O, newUserBorrow, khypeFee);
     }
 
-    /// @notice Increases an existing loan by borrowing more KHYPE
+    /// @notice Increases an existing loan by borrowing more KHYPE 
     /// @param khype The additional amount of KHYPE to borrow
     /// @dev Requires an active non-expired loan
     function increaseBorrow(uint256 khype) public nonReentrant {
@@ -762,7 +763,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @notice Converts H2O tokens to KHYPE
     /// @dev Round down user amount (in favor of protocol)
     /// @param value Amount of H2O to convert
-    /// @return Equivalent amount in KHYPE
+    /// @return Equivalent amount in KHYPE 
     function H2OtoKHYPEFloor(uint256 value) public view returns (uint256) {
         return Math.mulDiv(value, getBacking(), totalSupply(), Math.Rounding.Floor);
     }
@@ -820,11 +821,11 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
 
     /// @notice Return the free collateral for a user that can be withdrawn via removeCollateral()
     /// @param user The address of the user
-    /// @return The amount of free collateral in H2O
+    /// @return The amount of free collateral in H2O 
     function getFreeCollateral(address user) public view returns (uint256) {
         if (isLoanExpired(user)) {
             return 0;
-        }
+        }           
         uint256 userCollateral = activeLoans[user].collateral;
         uint256 userBorrowed = activeLoans[user].borrowed;
 
@@ -833,7 +834,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         return userCollateral - Math.mulDiv(userBorrowedInH2O, BPS_DENOMINATOR, COLLATERAL_RATIO, Math.Rounding.Ceil); //Rounds up (in favor of protocol)
     }
 
-    /// @notice Calculates the amount of H2O you get by buying with KHYPE
+    /// @notice Calculates the amount of H2O you get by buying with KHYPE 
     /// @param khypeAmount Amount of KHYPE to spend
     /// @return Amount of H2O user would receive
     function getAmountOutBuy(uint256 khypeAmount) external view returns (uint256) {
@@ -849,7 +850,7 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
         return (khypeAmount * (BPS_DENOMINATOR - burnFeeBps)) / BPS_DENOMINATOR;
     }
 
-    /// @notice Calculates the input KHYPE to call in loopCalcs given the totalKHYPERequired
+    /// @notice Calculates the input KHYPE to call in loopCalcs given the totalKHYPERequired 
     /// @param totalKHYPERequired = hydrateFee + interest + overcollateralizationAmount
     /// @param numberOfDays Duration of the loan in days
     function inverseLoopCalc(uint256 totalKHYPERequired, uint256 numberOfDays) public view returns (uint256 khype) {
@@ -1021,4 +1022,6 @@ contract Hydrate is ERC20, Ownable, ReentrancyGuard, Multicallable {
     /// @param token Address of the token
     /// @param amount Amount of tokens unlocked
     event TokenUnlocked(address indexed sender, address indexed token, uint256 amount);
+
+
 }

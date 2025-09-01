@@ -47,7 +47,6 @@ contract HydrateTest is Test {
         KHYPE.approve(address(hydrate), type(uint256).max);
 
         // // Enable minting and burning
-        // hydrate.{value: 6900 ether}();
         hydrate.setStartKHYPE(6900 ether);
 
         // // Increase Total supply

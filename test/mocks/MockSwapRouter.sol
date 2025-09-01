@@ -16,17 +16,17 @@ contract MockSwapRouter is ISwapRouter {
         return 0;
     }
 
-    function exactInput(ExactInputParams calldata params) external payable returns (uint256 amountOut) {
+    function exactInput(ExactInputParams calldata) external payable returns (uint256 amountOut) {
         return 0;
     }
 
-    function exactOutputSingle(ExactOutputSingleParams calldata params) external payable returns (uint256 amountIn) {
+    function exactOutputSingle(ExactOutputSingleParams calldata) external payable returns (uint256 amountIn) {
         return 0;
     }
 
-    function exactOutput(ExactOutputParams calldata params) external payable returns (uint256 amountIn) {
+    function exactOutput(ExactOutputParams calldata) external payable returns (uint256 amountIn) {
         return 0;
     }
 
-    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external {}
+    function uniswapV3SwapCallback(int256, int256, bytes calldata) external {}
 }

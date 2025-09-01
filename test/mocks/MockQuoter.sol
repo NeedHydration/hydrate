@@ -6,31 +6,27 @@ import {IQuoter} from "@v3-periphery/interfaces/IQuoter.sol";
 contract MockQuoter is IQuoter {
     constructor() {}
 
-    function quoteExactInput(bytes memory path, uint256 amountIn) external returns (uint256 amountOut) {
+    function quoteExactInput(bytes memory, uint256) external pure returns (uint256 amountOut) {
         return 0;
     }
 
-    function quoteExactInputSingle(
-        address tokenIn,
-        address tokenOut,
-        uint24 fee,
-        uint256 amountIn,
-        uint160 sqrtPriceLimitX96
-    ) external returns (uint256 amountOut) {
+    function quoteExactInputSingle(address, address, uint24, uint256, uint160)
+        external
+        pure
+        returns (uint256 amountOut)
+    {
         return 0;
     }
 
-    function quoteExactOutput(bytes memory path, uint256 amountOut) external returns (uint256 amountIn) {
+    function quoteExactOutput(bytes memory, uint256) external pure returns (uint256 amountIn) {
         return 0;
     }
 
-    function quoteExactOutputSingle(
-        address tokenIn,
-        address tokenOut,
-        uint24 fee,
-        uint256 amountOut,
-        uint160 sqrtPriceLimitX96
-    ) external returns (uint256 amountIn) {
+    function quoteExactOutputSingle(address, address, uint24, uint256, uint160)
+        external
+        pure
+        returns (uint256 amountIn)
+    {
         return 0;
     }
 }
